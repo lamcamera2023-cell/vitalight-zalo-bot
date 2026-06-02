@@ -156,6 +156,23 @@ app.get(
     );
   }
 );
+app.get(
+  "/zalo_verifierESUqUF_pFsuZZBHKo8GRK1-nldIpnsiYEJCs.html",
+  (req, res) => {
+    res.send(`
+<!DOCTYPE html>
+<html>
+<head>
+<meta property="zalo-platform-site-verification"
+content="ESUqUF_pFsuZZBHKo8GRK1-nldIpnsiYEJCs" />
+</head>
+<body>
+There Is No Limit To What You Can Accomplish Using Zalo!
+</body>
+</html>
+`);
+  }
+);
 // ==================== 404 ====================
 
 app.use((req, res) => {
