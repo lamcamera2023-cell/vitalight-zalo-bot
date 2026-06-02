@@ -144,7 +144,18 @@ Luôn trả lời bằng tiếng Việt.
     return res.status(500).send("ERROR");
   }
 });
-
+app.get(
+  "/zalo_verifierESUqUF_pFsuZZBHKo8GRK1-nldIpnsiYEJCs.html",
+  (req, res) => {
+    res.sendFile(
+      path.join(
+        __dirname,
+        "public",
+        "zalo_verifierESUqUF_pFsuZZBHKo8GRK1-nldIpnsiYEJCs.html"
+      )
+    );
+  }
+);
 // ==================== 404 ====================
 
 app.use((req, res) => {
