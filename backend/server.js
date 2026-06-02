@@ -42,7 +42,9 @@ app.get("/health", (req, res) => {
     timestamp: new Date().toISOString(),
   });
 });
-
+app.get("/webhook/zalo", (req, res) => {
+  res.status(200).send("Webhook OK");
+});
 // ==================== WEBHOOK ZALO ====================
 
 app.post("/webhook/zalo", async (req, res) => {
