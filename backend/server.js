@@ -7,25 +7,50 @@ dotenv.config();
 const app = express();
 app.use(express.json());
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 8080;
+
+// Kiểm tra biến môi trường
+if (!process.env.OPENAI_API_KEY) {
+  console.error("❌ Thiếu OPENAI_API_KEY");
+  process.exit(1);
+}
+
+if (!process.env.ZALO_OA_ACCESS_TOKEN) {
+  console.error("❌ Thiếu ZALO_OA_ACCESS_TOKEN");
+  process.exit(1);
+}
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-// Kiểm tra biến môi trường
 console.log("OPENAI_API_KEY:", !!process.env.OPENAI_API_KEY);
 console.log("ZALO_OA_ACCESS_TOKEN:", !!process.env.ZALO_OA_ACCESS_TOKEN);
 
-// Trang chủ
+// ==================== HOME ====================
+
 app.get("/", (req, res) => {
-  res.send("Zalo AI Bot is running");
+  res.send("Zalo AI Bot is running 🚀");
 });
 
-// Webhook nhận tin nhắn từ Zalo
+// ==================== HEALTH CHECK ====================
+
+app.get("/health", (req, res) => {
+  res.status(200).json({
+    status: "ok",
+    server: "running",
+    timestamp: new Date().toISOString(),
+  });
+});
+
+// ==================== WEBHOOK ZALO ====================
+
 app.post("/webhook/zalo", async (req, res) => {
   try {
-    console.log("Webhook nhận:", JSON.stringify(req.body));
+    console.log(
+      "📩 Webhook nhận:",
+      JSON.stringify(req.body, null, 2)
+    );
 
     const userId =
       req.body?.sender?.id ||
@@ -36,29 +61,51 @@ app.post("/webhook/zalo", async (req, res) => {
       req.body?.text;
 
     if (!userId || !userMessage) {
+      console.log("⚠️ Không có nội dung tin nhắn");
       return res.status(200).send("No message");
     }
 
-    // Gọi OpenAI
-    const completion = await openai.chat.completions.create({
-      model: "gpt-5",
-      messages: [
-        {
-          role: "system",
-          content:
-            "Bạn là trợ lý AI của Vitalight Camera. Hãy tư vấn camera Dahua, Hikvision, wifi, đầu ghi, ổ cứng, lắp đặt và hỗ trợ kỹ thuật."
-        },
-        {
-          role: "user",
-          content: userMessage
-        }
-      ]
-    });
+    console.log("👤 User:", userId);
+    console.log("💬 Message:", userMessage);
 
-    const answer = completion.choices[0].message.content;
+    // Gọi OpenAI
+    const completion =
+      await openai.chat.completions.create({
+        model: "gpt-5",
+        messages: [
+          {
+            role: "system",
+            content: `
+Bạn là trợ lý AI của Vitalight Camera.
+
+Nhiệm vụ:
+- Tư vấn camera Dahua, Hikvision
+- Camera Wifi trong nhà, ngoài trời
+- Đầu ghi hình
+- Ổ cứng camera
+- Thiết bị mạng
+- Lắp đặt camera
+- Hướng dẫn kỹ thuật
+- Hỗ trợ khách hàng chuyên nghiệp
+
+Luôn trả lời bằng tiếng Việt.
+`,
+          },
+          {
+            role: "user",
+            content: userMessage,
+          },
+        ],
+      });
+
+    const answer =
+      completion.choices?.[0]?.message?.content ||
+      "Xin lỗi, tôi chưa thể trả lời lúc này.";
+
+    console.log("🤖 AI:", answer);
 
     // Gửi tin nhắn về Zalo OA
-    const response = await fetch(
+    const zaloResponse = await fetch(
       "https://openapi.zalo.me/v3.0/oa/message/cs",
       {
         method: "POST",
@@ -77,16 +124,28 @@ app.post("/webhook/zalo", async (req, res) => {
       }
     );
 
-    const result = await response.text();
-    console.log("Zalo response:", result);
+    const zaloResult = await zaloResponse.text();
 
-    res.status(200).send("OK");
+    console.log("📤 Zalo Response:", zaloResult);
+
+    return res.status(200).send("OK");
   } catch (error) {
-    console.error("Webhook Error:", error);
-    res.status(500).send("ERROR");
+    console.error("❌ Webhook Error:", error);
+    return res.status(500).send("ERROR");
   }
 });
 
+// ==================== 404 ====================
+
+app.use((req, res) => {
+  res.status(404).json({
+    success: false,
+    message: "Endpoint not found",
+  });
+});
+
+// ==================== START SERVER ====================
+
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(`🚀 Server running on port ${PORT}`);
 });
