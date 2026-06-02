@@ -2,67 +2,40 @@ import express from "express";
 import dotenv from "dotenv";
 import OpenAI from "openai";
 
-import path from "path";
-import { fileURLToPath } from "url";
-
 dotenv.config();
 
 const app = express();
 app.use(express.json());
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-app.use(express.static(path.join(__dirname, "public")));
-
 const PORT = process.env.PORT || 8080;
-
-// Kiểm tra biến môi trường
-if (!process.env.OPENAI_API_KEY) {
-  console.error("❌ Thiếu OPENAI_API_KEY");
-  process.exit(1);
-}
-
-if (!process.env.ZALO_OA_ACCESS_TOKEN) {
-  console.error("❌ Thiếu ZALO_OA_ACCESS_TOKEN");
-  process.exit(1);
-}
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
+// Kiểm tra biến môi trường
 console.log("OPENAI_API_KEY:", !!process.env.OPENAI_API_KEY);
 console.log("ZALO_OA_ACCESS_TOKEN:", !!process.env.ZALO_OA_ACCESS_TOKEN);
 
-// ==================== HOME ====================
-
+// Trang chủ
 app.get("/", (req, res) => {
-  res.send("Zalo AI Bot is running 🚀");
+  res.send("Zalo AI Bot is running");
 });
 
-// ==================== HEALTH CHECK ====================
-
-app.get("/health", (req, res) => {
-  res.status(200).json({
-    status: "ok",
-    server: "running",
-    timestamp: new Date().toISOString(),
-  });
-});
+// Test webhook bằng trình duyệt
 app.get("/webhook/zalo", (req, res) => {
-  return res.status(200).json({
-    success: true
-  });
+  res.status(200).send("Webhook OK");
 });
-// ==================== WEBHOOK ZALO ====================
 
+// Webhook nhận tin nhắn từ Zalo OA
 app.post("/webhook/zalo", async (req, res) => {
+  // Trả 200 NGAY LẬP TỨC để Zalo không timeout
+  res.status(200).send("OK");
+
   try {
-    console.log(
-      "📩 Webhook nhận:",
-      JSON.stringify(req.body, null, 2)
-    );
+    console.log("===============");
+    console.log("Webhook nhận:");
+    console.log(JSON.stringify(req.body, null, 2));
 
     const userId =
       req.body?.sender?.id ||
@@ -72,49 +45,47 @@ app.post("/webhook/zalo", async (req, res) => {
       req.body?.message?.text ||
       req.body?.text;
 
+    console.log("User ID:", userId);
+    console.log("Message:", userMessage);
+
     if (!userId || !userMessage) {
-      console.log("⚠️ Không có nội dung tin nhắn");
-      return res.status(200).send("No message");
+      console.log("Không có nội dung tin nhắn");
+      return;
     }
 
-    console.log("👤 User:", userId);
-    console.log("💬 Message:", userMessage);
-
     // Gọi OpenAI
-    const completion =
-      await openai.chat.completions.create({
-        model: "gpt-5",
-        messages: [
-          {
-            role: "system",
-            content: `
+    const completion = await openai.chat.completions.create({
+      model: "gpt-5",
+      messages: [
+        {
+          role: "system",
+          content: `
 Bạn là trợ lý AI của Vitalight Camera.
 
 Nhiệm vụ:
-- Tư vấn camera Dahua, Hikvision
-- Camera Wifi trong nhà, ngoài trời
+- Tư vấn camera Dahua
+- Tư vấn camera Hikvision
+- Camera Wifi
 - Đầu ghi hình
-- Ổ cứng camera
-- Thiết bị mạng
-- Lắp đặt camera
-- Hướng dẫn kỹ thuật
-- Hỗ trợ khách hàng chuyên nghiệp
+- Ổ cứng lưu trữ
+- Thi công lắp đặt camera
+- Hỗ trợ kỹ thuật camera
 
-Luôn trả lời bằng tiếng Việt.
-`,
-          },
-          {
-            role: "user",
-            content: userMessage,
-          },
-        ],
-      });
+Trả lời ngắn gọn, dễ hiểu và chuyên nghiệp.
+`
+        },
+        {
+          role: "user",
+          content: userMessage
+        }
+      ]
+    });
 
     const answer =
       completion.choices?.[0]?.message?.content ||
       "Xin lỗi, tôi chưa thể trả lời lúc này.";
 
-    console.log("🤖 AI:", answer);
+    console.log("AI trả lời:", answer);
 
     // Gửi tin nhắn về Zalo OA
     const zaloResponse = await fetch(
@@ -136,59 +107,17 @@ Luôn trả lời bằng tiếng Việt.
       }
     );
 
-    const zaloResult = await zaloResponse.text();
+    const result = await zaloResponse.text();
 
-    console.log("📤 Zalo Response:", zaloResult);
+    console.log("Zalo Response:");
+    console.log(result);
 
-    return res.status(200).send("OK");
   } catch (error) {
-    console.error("❌ Webhook Error:", error);
-    return res.status(500).send("ERROR");
+    console.error("WEBHOOK ERROR:");
+    console.error(error);
   }
 });
-app.get(
-  "/zalo_verifierESUqUF_pFsuZZBHKo8GRK1-nldIpnsiYEJCs.html",
-  (req, res) => {
-    res.sendFile(
-      path.join(
-        __dirname,
-        "public",
-        "zalo_verifierESUqUF_pFsuZZBHKo8GRK1-nldIpnsiYEJCs.html"
-      )
-    );
-  }
-);
-app.get(
-  "/zalo_verifierESUqUF_pFsuZZBHKo8GRK1-nldIpnsiYEJCs.html",
-  (req, res) => {
-    res.send(`
-<!DOCTYPE html>
-<html>
-<head>
-<meta property="zalo-platform-site-verification"
-content="ESUqUF_pFsuZZBHKo8GRK1-nldIpnsiYEJCs" />
-</head>
-<body>
-There Is No Limit To What You Can Accomplish Using Zalo!
-</body>
-</html>
-`);
-  }
-);
-app.get("/test123", (req, res) => {
-  res.send("TEST ROUTE OK");
-});
-// ==================== 404 ====================
-
-app.use((req, res) => {
-  res.status(404).json({
-    success: false,
-    message: "Endpoint not found",
-  });
-});
-
-// ==================== START SERVER ====================
 
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`Server running on port ${PORT}`);
 });
