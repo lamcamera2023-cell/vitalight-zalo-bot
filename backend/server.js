@@ -51,7 +51,9 @@ app.get("/health", (req, res) => {
   });
 });
 app.get("/webhook/zalo", (req, res) => {
-  res.status(200).send("Webhook OK");
+  return res.status(200).json({
+    success: true
+  });
 });
 // ==================== WEBHOOK ZALO ====================
 
