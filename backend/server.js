@@ -173,6 +173,9 @@ There Is No Limit To What You Can Accomplish Using Zalo!
 `);
   }
 );
+app.get("/test123", (req, res) => {
+  res.send("TEST ROUTE OK");
+});
 // ==================== 404 ====================
 
 app.use((req, res) => {
