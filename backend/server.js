@@ -22,7 +22,7 @@ app.get("/", (req, res) => {
   res.send("Zalo AI Bot is running");
 });
 
-// Webhook nhận tin nhắn từ Zalo OA
+// Webhook nhận tin nhắn từ Zalo
 app.post("/webhook/zalo", async (req, res) => {
   try {
     console.log("Webhook nhận:", JSON.stringify(req.body));
