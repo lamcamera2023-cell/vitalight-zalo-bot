@@ -6,46 +6,67 @@ dotenv.config();
 
 const app = express();
 
-app.use(express.json());
+app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
 
 const PORT = process.env.PORT || 8080;
 
-// Gemini
+console.log("================================");
+console.log("SERVER STARTING...");
+console.log("GEMINI_API_KEY:", !!process.env.GEMINI_API_KEY);
+console.log("ZALO_OA_ACCESS_TOKEN:", !!process.env.ZALO_OA_ACCESS_TOKEN);
+console.log("================================");
+
 const ai = new GoogleGenAI({
 apiKey: process.env.GEMINI_API_KEY,
 });
 
-// Kiểm tra biến môi trường
-console.log("GEMINI_API_KEY:", !!process.env.GEMINI_API_KEY);
-console.log("ZALO_OA_ACCESS_TOKEN:", !!process.env.ZALO_OA_ACCESS_TOKEN);
-
-// Trang chủ
+// Home
 app.get("/", (req, res) => {
-res.status(200).send("Zalo AI Bot is running");
+res.send("Zalo AI Bot is running");
 });
 
-// Test webhook
+// Health Check
+app.get("/health", (req, res) => {
+res.json({
+success: true,
+server: "running",
+time: new Date(),
+});
+});
+
+// Webhook Test
 app.get("/webhook/zalo", (req, res) => {
-res.status(200).send("Webhook OK");
+res.send("Webhook OK");
 });
 
-// Test Gemini
+// Gemini Test
 app.get("/test-gemini", async (req, res) => {
 try {
-const response = await ai.models.generateContent({
-model: "gemini-2.5-flash",
-contents: "Xin chào",
-});
+console.log("TEST GEMINI START");
 
 ```
+const result = await Promise.race([
+  ai.models.generateContent({
+    model: "gemini-2.0-flash",
+    contents: "Xin chào",
+  }),
+
+  new Promise((_, reject) =>
+    setTimeout(() => reject(new Error("Gemini timeout")), 30000)
+  ),
+]);
+
+console.log("TEST GEMINI SUCCESS");
+
 res.json({
   success: true,
-  answer: response.text,
+  answer: result.text,
 });
 ```
 
 } catch (error) {
+console.error("TEST GEMINI ERROR");
 console.error(error);
 
 ```
@@ -58,9 +79,8 @@ res.status(500).json({
 }
 });
 
-// WEBHOOK ZALO
+// ZALO WEBHOOK
 app.post("/webhook/zalo", async (req, res) => {
-// Trả về ngay để tránh timeout
 res.status(200).send("OK");
 
 try {
@@ -82,14 +102,16 @@ console.log("USER ID:", userId);
 console.log("MESSAGE:", userMessage);
 
 if (!userId || !userMessage) {
-  console.log("Không có nội dung tin nhắn");
+  console.log("NO MESSAGE FOUND");
   return;
 }
 
-// Gọi Gemini
-const geminiResponse = await ai.models.generateContent({
-  model: "gemini-2.5-flash",
-  contents: `
+console.log("CALL GEMINI...");
+
+const result = await Promise.race([
+  ai.models.generateContent({
+    model: "gemini-2.0-flash",
+    contents: `
 ```
 
 Bạn là trợ lý AI của Vitalight Camera.
@@ -98,28 +120,33 @@ Nhiệm vụ:
 
 * Tư vấn camera Dahua
 * Tư vấn camera Hikvision
-* Tư vấn camera Wifi
+* Camera Wifi
 * Đầu ghi hình
 * Ổ cứng camera
-* Thi công lắp đặt camera
-* Hỗ trợ kỹ thuật camera
+* Thi công camera
+* Hỗ trợ kỹ thuật
 
-Trả lời ngắn gọn, chuyên nghiệp, dễ hiểu.
+Khách hỏi:
 
-Câu hỏi khách hàng:
 ${userMessage}
 `,
-});
+}),
 
 ```
+  new Promise((_, reject) =>
+    setTimeout(() => reject(new Error("Gemini timeout")), 30000)
+  ),
+]);
+
 const answer =
-  geminiResponse.text ||
+  result?.text ||
   "Xin lỗi, hiện tại tôi chưa thể trả lời.";
 
 console.log("AI ANSWER:");
 console.log(answer);
 
-// Gửi về Zalo
+console.log("SEND TO ZALO...");
+
 const zaloResponse = await fetch(
   "https://openapi.zalo.me/v3.0/oa/message/cs",
   {
@@ -139,10 +166,10 @@ const zaloResponse = await fetch(
   }
 );
 
-const result = await zaloResponse.text();
+const zaloResult = await zaloResponse.text();
 
 console.log("ZALO RESPONSE:");
-console.log(result);
+console.log(zaloResult);
 ```
 
 } catch (error) {
