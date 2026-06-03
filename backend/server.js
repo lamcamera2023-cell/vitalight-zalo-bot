@@ -18,155 +18,120 @@ console.log("ZALO_OA_ACCESS_TOKEN:", !!process.env.ZALO_OA_ACCESS_TOKEN);
 console.log("================================");
 
 const ai = new GoogleGenAI({
-apiKey: process.env.GEMINI_API_KEY,
+  apiKey: process.env.GEMINI_API_KEY,
 });
 
 app.get("/", (req, res) => {
-res.send("Zalo AI Bot is running");
+  res.send("Zalo AI Bot is running");
 });
 
 app.get("/health", (req, res) => {
-res.json({
-success: true,
-server: "running",
-time: new Date(),
-});
+  res.json({
+    success: true,
+    server: "running",
+    time: new Date(),
+  });
 });
 
 app.get("/webhook/zalo", (req, res) => {
-res.send("Webhook OK");
+  res.send("Webhook OK");
 });
 
 app.get("/test-gemini", async (req, res) => {
-try {
-console.log("TEST GEMINI START");
+  try {
+    const result = await ai.models.generateContent({
+      model: "gemini-2.0-flash",
+      contents: "Xin chào",
+    });
 
-```
-const result = await Promise.race([
-  ai.models.generateContent({
-    model: "gemini-2.0-flash",
-    contents: "Xin chào",
-  }),
-  new Promise((_, reject) =>
-    setTimeout(() => reject(new Error("Gemini timeout")), 30000)
-  ),
-]);
+    res.json({
+      success: true,
+      answer: result.text,
+    });
+  } catch (error) {
+    console.error(error);
 
-console.log("TEST GEMINI SUCCESS");
-
-res.json({
-  success: true,
-  answer: result.text,
-});
-```
-
-} catch (error) {
-console.error("TEST GEMINI ERROR");
-console.error(error);
-
-```
-res.status(500).json({
-  success: false,
-  error: error.message,
-});
-```
-
-}
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
 });
 
 app.post("/webhook/zalo", async (req, res) => {
-res.status(200).send("OK");
+  res.status(200).send("OK");
 
-try {
-console.log("================================");
-console.log("ZALO WEBHOOK RECEIVED");
-console.log(JSON.stringify(req.body, null, 2));
+  try {
+    console.log("ZALO WEBHOOK:");
+    console.log(JSON.stringify(req.body, null, 2));
 
-```
-const userId =
-  req.body?.sender?.id ||
-  req.body?.user_id ||
-  req.body?.user_id_by_app;
+    const userId =
+      req.body?.sender?.id ||
+      req.body?.user_id ||
+      req.body?.user_id_by_app;
 
-const userMessage =
-  req.body?.message?.text ||
-  req.body?.text;
+    const userMessage =
+      req.body?.message?.text ||
+      req.body?.text;
 
-console.log("USER ID:", userId);
-console.log("MESSAGE:", userMessage);
+    if (!userId || !userMessage) {
+      console.log("NO MESSAGE");
+      return;
+    }
 
-if (!userId || !userMessage) {
-  console.log("NO MESSAGE FOUND");
-  return;
-}
-
-const result = await Promise.race([
-  ai.models.generateContent({
-    model: "gemini-2.0-flash",
-    contents: `
-```
-
+    const result = await ai.models.generateContent({
+      model: "gemini-2.0-flash",
+      contents: `
 Bạn là trợ lý AI của Vitalight Camera.
 
-Nhiệm vụ:
-
-* Tư vấn camera Dahua
-* Tư vấn camera Hikvision
-* Camera Wifi
-* Đầu ghi hình
-* Ổ cứng camera
-* Thi công camera
-* Hỗ trợ kỹ thuật
+Chuyên:
+- Camera Dahua
+- Camera Hikvision
+- Camera Wifi
+- Đầu ghi hình
+- Ổ cứng camera
+- Thi công lắp đặt
+- Hỗ trợ kỹ thuật
 
 Khách hỏi:
 
 ${userMessage}
 `,
-}),
-new Promise((_, reject) =>
-setTimeout(() => reject(new Error("Gemini timeout")), 30000)
-),
-]);
+    });
 
-```
-const answer =
-  result?.text ||
-  "Xin lỗi, hiện tại tôi chưa thể trả lời.";
+    const answer =
+      result.text ||
+      "Xin lỗi, tôi chưa thể trả lời lúc này.";
 
-console.log("AI ANSWER:");
-console.log(answer);
+    const zaloResponse = await fetch(
+      "https://openapi.zalo.me/v3.0/oa/message/cs",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          access_token: process.env.ZALO_OA_ACCESS_TOKEN,
+        },
+        body: JSON.stringify({
+          recipient: {
+            user_id: userId,
+          },
+          message: {
+            text: answer,
+          },
+        }),
+      }
+    );
 
-const zaloResponse = await fetch(
-  "https://openapi.zalo.me/v3.0/oa/message/cs",
-  {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      access_token: process.env.ZALO_OA_ACCESS_TOKEN,
-    },
-    body: JSON.stringify({
-      recipient: {
-        user_id: userId,
-      },
-      message: {
-        text: answer,
-      },
-    }),
+    const zaloResult = await zaloResponse.text();
+
+    console.log("ZALO RESPONSE:");
+    console.log(zaloResult);
+  } catch (error) {
+    console.error("WEBHOOK ERROR:");
+    console.error(error);
   }
-);
-
-const zaloResult = await zaloResponse.text();
-
-console.log("ZALO RESPONSE:");
-console.log(zaloResult);
-```
-
-} catch (error) {
-console.error("WEBHOOK ERROR:");
-console.error(error);
-}
 });
 
 app.listen(PORT, "0.0.0.0", () => {
-console.log(`Server running on port ${PORT}`);
+  console.log(`Server running on port ${PORT}`);
 });
