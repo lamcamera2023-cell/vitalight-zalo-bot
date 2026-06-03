@@ -1,5 +1,6 @@
 import express from "express";
 import dotenv from "dotenv";
+import OpenAI from "openai";
 
 dotenv.config();
 
@@ -10,29 +11,143 @@ app.use(express.urlencoded({ extended: true }));
 
 const PORT = process.env.PORT || 8080;
 
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
+
+// Kiểm tra biến môi trường
+console.log("OPENAI_API_KEY:", !!process.env.OPENAI_API_KEY);
+console.log("ZALO_OA_ACCESS_TOKEN:", !!process.env.ZALO_OA_ACCESS_TOKEN);
+
 // Trang chủ
 app.get("/", (req, res) => {
   res.status(200).send("Zalo AI Bot is running");
 });
 
-// Kiểm tra webhook bằng trình duyệt
+// Test webhook
 app.get("/webhook/zalo", (req, res) => {
   res.status(200).send("Webhook OK");
 });
 
-// Webhook Zalo
-app.post("/webhook/zalo", (req, res) => {
-  console.log("========== ZALO WEBHOOK ==========");
-  console.log("Headers:");
-  console.log(JSON.stringify(req.headers, null, 2));
+// Test OpenAI
+app.get("/test-openai", async (req, res) => {
+  try {
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "user",
+          content: "Xin chào",
+        },
+      ],
+    });
 
-  console.log("Body:");
-  console.log(JSON.stringify(req.body, null, 2));
+    res.json({
+      success: true,
+      answer: completion.choices[0].message.content,
+    });
+  } catch (error) {
+    console.error(error);
 
-  return res.status(200).json({
-    error: 0,
-    message: "success"
-  });
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+// WEBHOOK ZALO
+app.post("/webhook/zalo", async (req, res) => {
+  // Trả về 200 ngay để Zalo không timeout
+  res.status(200).send("OK");
+
+  try {
+    console.log("================================");
+    console.log("ZALO WEBHOOK RECEIVED");
+    console.log(JSON.stringify(req.body, null, 2));
+
+    const userId =
+      req.body?.sender?.id ||
+      req.body?.user_id ||
+      req.body?.user_id_by_app;
+
+    const userMessage =
+      req.body?.message?.text ||
+      req.body?.text;
+
+    console.log("USER ID:", userId);
+    console.log("MESSAGE:", userMessage);
+
+    if (!userId || !userMessage) {
+      console.log("Không tìm thấy nội dung tin nhắn");
+      return;
+    }
+
+    console.log("Đang gọi OpenAI...");
+
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "system",
+          content: `
+Bạn là trợ lý AI của Vitalight Camera.
+
+Nhiệm vụ:
+- Tư vấn camera Dahua
+- Tư vấn camera Hikvision
+- Camera Wifi
+- Đầu ghi hình
+- Ổ cứng lưu trữ
+- Thi công lắp đặt camera
+- Hỗ trợ kỹ thuật camera
+
+Trả lời ngắn gọn, chuyên nghiệp và dễ hiểu.
+`,
+        },
+        {
+          role: "user",
+          content: userMessage,
+        },
+      ],
+    });
+
+    const answer =
+      completion?.choices?.[0]?.message?.content ||
+      "Xin lỗi, hiện tôi chưa thể trả lời.";
+
+    console.log("AI ANSWER:");
+    console.log(answer);
+
+    console.log("Đang gửi về Zalo...");
+
+    const zaloResponse = await fetch(
+      "https://openapi.zalo.me/v3.0/oa/message/cs",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          access_token: process.env.ZALO_OA_ACCESS_TOKEN,
+        },
+        body: JSON.stringify({
+          recipient: {
+            user_id: userId,
+          },
+          message: {
+            text: answer,
+          },
+        }),
+      }
+    );
+
+    const result = await zaloResponse.text();
+
+    console.log("ZALO RESPONSE:");
+    console.log(result);
+  } catch (error) {
+    console.error("WEBHOOK ERROR:");
+    console.error(error);
+  }
 });
 
 app.listen(PORT, "0.0.0.0", () => {
