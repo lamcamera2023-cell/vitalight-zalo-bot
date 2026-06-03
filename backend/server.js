@@ -1,137 +1,140 @@
-import express from "express";
-import dotenv from "dotenv";
-import { GoogleGenAI } from "@google/genai";
+```javascript
+require("dotenv").config();
 
-dotenv.config();
+const express = require("express");
+const axios = require("axios");
+const Anthropic = require("@anthropic-ai/sdk");
 
 const app = express();
+app.use(express.json());
 
-app.use(express.json({ limit: "10mb" }));
-app.use(express.urlencoded({ extended: true }));
+const anthropic = new Anthropic({
+  apiKey: process.env.CLAUDE_API_KEY,
+});
 
 const PORT = process.env.PORT || 8080;
+const ZALO_ACCESS_TOKEN = process.env.ZALO_ACCESS_TOKEN;
 
-console.log("================================");
-console.log("SERVER STARTING...");
-console.log("GEMINI_API_KEY:", !!process.env.GEMINI_API_KEY);
-console.log("ZALO_OA_ACCESS_TOKEN:", !!process.env.ZALO_OA_ACCESS_TOKEN);
-console.log("================================");
-
-const ai = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY,
-});
-
+// Health Check
 app.get("/", (req, res) => {
-  res.send("Zalo AI Bot is running");
+  res.send("VITALIGHT Camera AI Bot Running");
 });
 
-app.get("/health", (req, res) => {
-  res.json({
-    success: true,
-    server: "running",
-    time: new Date(),
-  });
+// Webhook Verification
+app.get("/webhook", (req, res) => {
+  res.status(200).send("Webhook OK");
 });
 
-app.get("/webhook/zalo", (req, res) => {
-  res.send("Webhook OK");
-});
-
-app.get("/test-gemini", async (req, res) => {
+// Nhận tin nhắn từ Zalo OA
+app.post("/webhook", async (req, res) => {
   try {
-    const result = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
-      contents: "Xin chào",
-    });
+    console.log(
+      "Webhook Data:",
+      JSON.stringify(req.body, null, 2)
+    );
 
-    res.json({
-      success: true,
-      answer: result.text,
-    });
-  } catch (error) {
-    console.error(error);
+    const data = req.body;
 
-    res.status(500).json({
-      success: false,
-      error: error.message,
-    });
-  }
-});
-
-app.post("/webhook/zalo", async (req, res) => {
-  res.status(200).send("OK");
-
-  try {
-    console.log("ZALO WEBHOOK:");
-    console.log(JSON.stringify(req.body, null, 2));
-
-    const userId =
-      req.body?.sender?.id ||
-      req.body?.user_id ||
-      req.body?.user_id_by_app;
-
-    const userMessage =
-      req.body?.message?.text ||
-      req.body?.text;
-
-    if (!userId || !userMessage) {
-      console.log("NO MESSAGE");
-      return;
+    if (
+      !data.sender ||
+      !data.message ||
+      !data.message.text
+    ) {
+      return res.sendStatus(200);
     }
 
-    const result = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
-      contents: `
-Bạn là trợ lý AI của Vitalight Camera.
+    const userId = data.sender.id;
+    const userMessage = data.message.text;
 
-Chuyên:
-- Camera Dahua
-- Camera Hikvision
-- Camera Wifi
-- Đầu ghi hình
-- Ổ cứng camera
-- Thi công lắp đặt
-- Hỗ trợ kỹ thuật
+    console.log("User:", userMessage);
 
-Khách hỏi:
+    // Claude AI
+    const claudeResponse =
+      await anthropic.messages.create({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 1000,
+        temperature: 0.5,
 
-${userMessage}
-`,
-    });
+        system: `
+Bạn là AI CSKH của cửa hàng VITALIGHT CAMERA.
 
-    const answer =
-      result.text ||
-      "Xin lỗi, tôi chưa thể trả lời lúc này.";
+Nhiệm vụ:
 
-    const zaloResponse = await fetch(
+1. Tư vấn camera IMOU
+2. Tư vấn camera DAHUA
+3. Tư vấn camera EZVIZ
+4. Tư vấn camera TAPO
+5. Hướng dẫn cài đặt camera
+6. Hướng dẫn xem camera từ xa
+7. Hỗ trợ bảo hành
+8. Hỗ trợ kỹ thuật
+
+Quy tắc:
+
+- Trả lời bằng tiếng Việt.
+- Trả lời ngắn gọn.
+- Chuyên nghiệp.
+- Không bịa thông tin.
+- Nếu không biết hãy đề nghị nhân viên hỗ trợ.
+
+Thông tin cửa hàng:
+
+Tên:
+VITALIGHT CAMERA
+
+Hotline:
+0937254555
+
+Website:
+https://vitalight.vn
+        `,
+
+        messages: [
+          {
+            role: "user",
+            content: userMessage,
+          },
+        ],
+      });
+
+    const aiReply =
+      claudeResponse.content[0].text;
+
+    console.log("Claude:", aiReply);
+
+    // Gửi trả lời về Zalo OA
+    await axios.post(
       "https://openapi.zalo.me/v3.0/oa/message/cs",
       {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          access_token: process.env.ZALO_OA_ACCESS_TOKEN,
+        recipient: {
+          user_id: userId,
         },
-        body: JSON.stringify({
-          recipient: {
-            user_id: userId,
-          },
-          message: {
-            text: answer,
-          },
-        }),
+        message: {
+          text: aiReply,
+        },
+      },
+      {
+        headers: {
+          access_token: ZALO_ACCESS_TOKEN,
+          "Content-Type": "application/json",
+        },
       }
     );
 
-    const zaloResult = await zaloResponse.text();
-
-    console.log("ZALO RESPONSE:");
-    console.log(zaloResult);
+    res.sendStatus(200);
   } catch (error) {
-    console.error("WEBHOOK ERROR:");
-    console.error(error);
+    console.error(
+      "Webhook Error:",
+      error.response?.data || error.message
+    );
+
+    res.sendStatus(200);
   }
 });
 
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`Server running on port ${PORT}`);
+app.listen(PORT, () => {
+  console.log(
+    `VITALIGHT BOT running on port ${PORT}`
+  );
 });
+```
