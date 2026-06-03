@@ -21,12 +21,10 @@ const ai = new GoogleGenAI({
 apiKey: process.env.GEMINI_API_KEY,
 });
 
-// Home
 app.get("/", (req, res) => {
 res.send("Zalo AI Bot is running");
 });
 
-// Health Check
 app.get("/health", (req, res) => {
 res.json({
 success: true,
@@ -35,12 +33,10 @@ time: new Date(),
 });
 });
 
-// Webhook Test
 app.get("/webhook/zalo", (req, res) => {
 res.send("Webhook OK");
 });
 
-// Gemini Test
 app.get("/test-gemini", async (req, res) => {
 try {
 console.log("TEST GEMINI START");
@@ -51,7 +47,6 @@ const result = await Promise.race([
     model: "gemini-2.0-flash",
     contents: "Xin chào",
   }),
-
   new Promise((_, reject) =>
     setTimeout(() => reject(new Error("Gemini timeout")), 30000)
   ),
@@ -79,7 +74,6 @@ res.status(500).json({
 }
 });
 
-// ZALO WEBHOOK
 app.post("/webhook/zalo", async (req, res) => {
 res.status(200).send("OK");
 
@@ -106,8 +100,6 @@ if (!userId || !userMessage) {
   return;
 }
 
-console.log("CALL GEMINI...");
-
 const result = await Promise.race([
   ai.models.generateContent({
     model: "gemini-2.0-flash",
@@ -131,21 +123,18 @@ Khách hỏi:
 ${userMessage}
 `,
 }),
-
-```
-  new Promise((_, reject) =>
-    setTimeout(() => reject(new Error("Gemini timeout")), 30000)
-  ),
+new Promise((_, reject) =>
+setTimeout(() => reject(new Error("Gemini timeout")), 30000)
+),
 ]);
 
+```
 const answer =
   result?.text ||
   "Xin lỗi, hiện tại tôi chưa thể trả lời.";
 
 console.log("AI ANSWER:");
 console.log(answer);
-
-console.log("SEND TO ZALO...");
 
 const zaloResponse = await fetch(
   "https://openapi.zalo.me/v3.0/oa/message/cs",
