@@ -1,26 +1,31 @@
 ```javascript
-require("dotenv").config();
+import express from "express";
+import axios from "axios";
+import dotenv from "dotenv";
+import Anthropic from "@anthropic-ai/sdk";
 
-const express = require("express");
-const axios = require("axios");
-const Anthropic = require("@anthropic-ai/sdk");
+dotenv.config();
 
 const app = express();
+
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 const anthropic = new Anthropic({
   apiKey: process.env.CLAUDE_API_KEY,
 });
 
 const PORT = process.env.PORT || 8080;
-const ZALO_ACCESS_TOKEN = process.env.ZALO_ACCESS_TOKEN;
 
-// Health Check
+const ZALO_ACCESS_TOKEN =
+  process.env.ZALO_ACCESS_TOKEN;
+
+// Trang kiểm tra hoạt động
 app.get("/", (req, res) => {
-  res.send("VITALIGHT Camera AI Bot Running");
+  res.send("VITALIGHT CAMERA AI BOT ONLINE");
 });
 
-// Webhook Verification
+// Webhook test
 app.get("/webhook", (req, res) => {
   res.status(200).send("Webhook OK");
 });
@@ -29,12 +34,12 @@ app.get("/webhook", (req, res) => {
 app.post("/webhook", async (req, res) => {
   try {
     console.log(
-      "Webhook Data:",
       JSON.stringify(req.body, null, 2)
     );
 
     const data = req.body;
 
+    // Bỏ qua nếu không phải tin nhắn text
     if (
       !data.sender ||
       !data.message ||
@@ -49,44 +54,35 @@ app.post("/webhook", async (req, res) => {
     console.log("User:", userMessage);
 
     // Claude AI
-    const claudeResponse =
+    const response =
       await anthropic.messages.create({
         model: "claude-sonnet-4-20250514",
-        max_tokens: 1000,
-        temperature: 0.5,
+        max_tokens: 800,
+        temperature: 0.4,
 
         system: `
-Bạn là AI CSKH của cửa hàng VITALIGHT CAMERA.
+Bạn là trợ lý AI của VITALIGHT CAMERA.
 
-Nhiệm vụ:
+Thông tin doanh nghiệp:
 
-1. Tư vấn camera IMOU
-2. Tư vấn camera DAHUA
-3. Tư vấn camera EZVIZ
-4. Tư vấn camera TAPO
-5. Hướng dẫn cài đặt camera
-6. Hướng dẫn xem camera từ xa
-7. Hỗ trợ bảo hành
-8. Hỗ trợ kỹ thuật
-
-Quy tắc:
-
-- Trả lời bằng tiếng Việt.
-- Trả lời ngắn gọn.
-- Chuyên nghiệp.
-- Không bịa thông tin.
-- Nếu không biết hãy đề nghị nhân viên hỗ trợ.
-
-Thông tin cửa hàng:
-
-Tên:
-VITALIGHT CAMERA
+- Chuyên camera IMOU
+- Chuyên camera DAHUA
+- Chuyên camera EZVIZ
+- Chuyên camera TAPO
 
 Hotline:
 0764486555
 
 Website:
 https://vitalight.vn
+
+Quy tắc:
+
+- Luôn trả lời tiếng Việt.
+- Trả lời ngắn gọn.
+- Tư vấn nhiệt tình.
+- Nếu khách hỏi giá hãy tư vấn liên hệ hotline.
+- Nếu không biết hãy đề nghị nhân viên hỗ trợ.
         `,
 
         messages: [
@@ -98,11 +94,11 @@ https://vitalight.vn
       });
 
     const aiReply =
-      claudeResponse.content[0].text;
+      response.content[0].text;
 
-    console.log("Claude:", aiReply);
+    console.log("AI:", aiReply);
 
-    // Gửi trả lời về Zalo OA
+    // Gửi tin nhắn về Zalo
     await axios.post(
       "https://openapi.zalo.me/v3.0/oa/message/cs",
       {
@@ -115,26 +111,30 @@ https://vitalight.vn
       },
       {
         headers: {
-          access_token: ZALO_ACCESS_TOKEN,
-          "Content-Type": "application/json",
+          access_token:
+            ZALO_ACCESS_TOKEN,
+          "Content-Type":
+            "application/json",
         },
       }
     );
 
-    res.sendStatus(200);
+    return res.sendStatus(200);
   } catch (error) {
     console.error(
-      "Webhook Error:",
-      error.response?.data || error.message
+      "ERROR:",
+      error.response?.data ||
+        error.message ||
+        error
     );
 
-    res.sendStatus(200);
+    return res.sendStatus(200);
   }
 });
 
 app.listen(PORT, () => {
   console.log(
-    `VITALIGHT BOT running on port ${PORT}`
+    `SERVER RUNNING ON PORT ${PORT}`
   );
 });
 ```
