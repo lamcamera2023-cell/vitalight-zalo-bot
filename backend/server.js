@@ -42,13 +42,20 @@ app.get("/", (req, res) => {
   res.send("VITALIGHT CAMERA AI BOT ONLINE");
 });
 
-app.get("/webhook", (req, res) => {
-  res.status(200).send("Webhook OK");
+/*
+===================================
+WEBHOOK ZALO
+===================================
+*/
+
+app.get("/webhook/zalo", (req, res) => {
+  console.log("Webhook GET OK");
+  return res.status(200).send("Webhook OK");
 });
 
-app.post("/webhook", async (req, res) => {
+app.post("/webhook/zalo", async (req, res) => {
   try {
-    console.log("Webhook data:");
+    console.log("====== WEBHOOK RECEIVED ======");
     console.log(JSON.stringify(req.body, null, 2));
 
     const data = req.body;
@@ -85,7 +92,7 @@ app.post("/webhook", async (req, res) => {
 
     console.log("AI:", aiReply);
 
-    await axios.post(
+    const zaloResponse = await axios.post(
       "https://openapi.zalo.me/v3.0/oa/message/cs",
       {
         recipient: {
@@ -98,16 +105,22 @@ app.post("/webhook", async (req, res) => {
       {
         headers: {
           access_token:
-            process.env.ZALO_ACCESS_TOKEN,
+            process.env.ZALO_OA_ACCESS_TOKEN,
           "Content-Type":
             "application/json",
         },
       }
     );
 
+    console.log(
+      "ZALO SEND:",
+      JSON.stringify(zaloResponse.data)
+    );
+
     return res.sendStatus(200);
   } catch (error) {
     console.error(
+      "WEBHOOK ERROR:",
       error.response?.data ||
       error.message ||
       error
@@ -115,6 +128,19 @@ app.post("/webhook", async (req, res) => {
 
     return res.sendStatus(200);
   }
+});
+
+/*
+===================================
+HEALTH CHECK
+===================================
+*/
+
+app.get("/health", (req, res) => {
+  res.status(200).json({
+    status: "ok",
+    service: "VITALIGHT CAMERA BOT",
+  });
 });
 
 app.listen(PORT, () => {
