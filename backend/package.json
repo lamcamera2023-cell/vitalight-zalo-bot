@@ -1,24 +1,15 @@
 {
-  "name": "backend",
-  "version": "1.0.0",
-  "type": "module",
-  "scripts": {
-    "start": "node server.js",
-    "dev": "nodemon server.js"
-  },
-  "dependencies": {
-    "@prisma/client": "^7.8.0",
-    "bcrypt": "^6.0.0",
-    "cors": "^2.8.5",
-    "dotenv": "^17.4.2",
-    "express": "^5.1.0",
-    "jsonwebtoken": "^9.0.2",
-    "multer": "^2.0.1",
-    "openai": "^6.0.0",
-    "prisma": "^7.8.0",
-    "socket.io": "^4.8.1"
-  },
-  "devDependencies": {
-    "nodemon": "^3.1.10"
-  }
+"name": "vitalight-zalo-bot",
+"version": "1.0.0",
+"type": "module",
+"main": "server.js",
+"scripts": {
+"start": "node server.js"
+},
+"dependencies": {
+"@anthropic-ai/sdk": "^0.55.0",
+"axios": "^1.8.4",
+"dotenv": "^16.5.0",
+"express": "^4.21.2"
+}
 }
