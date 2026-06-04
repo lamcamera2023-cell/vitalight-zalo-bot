@@ -119,12 +119,9 @@ app.post("/webhook/zalo", async (req, res) => {
 
     return res.sendStatus(200);
   } catch (error) {
-    console.error(
-      "WEBHOOK ERROR:",
-      error.response?.data ||
-      error.message ||
-      error
-    );
+    console.error("WEBHOOK ERROR FULL:");
+console.error(JSON.stringify(error.response?.data, null, 2));
+console.error(error.message);
 
     return res.sendStatus(200);
   }
