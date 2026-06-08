@@ -75,7 +75,7 @@ app.post("/webhook/zalo", async (req, res) => {
 
     const claudeResponse =
       await anthropic.messages.create({
-        model: "claude-sonnet-4-20250514",
+        model: "claude-haiku-4-5",
         max_tokens: 500,
         temperature: 0.4,
         system: SYSTEM_PROMPT,
