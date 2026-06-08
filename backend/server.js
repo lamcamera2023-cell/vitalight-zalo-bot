@@ -18,7 +18,7 @@ const PORT = process.env.PORT || 8080;
 
 const ZALO_APP_ID = process.env.ZALO_APP_ID;
 const ZALO_APP_SECRET = process.env.ZALO_APP_SECRET;
-const TOKEN_FILE = "./tokens.json";
+const TOKEN_FILE = "/data/tokens.json";
 
 const SYSTEM_PROMPT = `
 Bạn là trợ lý AI của VITALIGHT CAMERA.
@@ -123,6 +123,12 @@ app.post("/webhook/zalo", async (req, res) => {
     console.log(JSON.stringify(req.body, null, 2));
 
     const data = req.body;
+
+    // Chỉ xử lý tin nhắn văn bản từ NGƯỜI DÙNG, bỏ qua tin do OA gửi
+    if (data.event_name !== "user_send_text") {
+      console.log("Bỏ qua sự kiện:", data.event_name);
+      return res.sendStatus(200);
+    }
 
     if (!data.sender || !data.message || !data.message.text) {
       return res.sendStatus(200);
