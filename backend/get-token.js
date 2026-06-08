@@ -3,7 +3,7 @@ import axios from "axios";
 // ====== ĐIỀN 3 THÔNG TIN VÀO ĐÂY ======
 const APP_ID = "2819509856756290285";
 const APP_SECRET = "LKKD7p88fqW6B41SUJ57";
-const CODE = "S_K1zIEiIqmamtdFEEii5og7Gf12pcPlO8S-f4F3AseYhNFZ4SH1PpwVARyymtywKOXMmdhwTZrKgLVBFCu8KIwIFz0pgLC00UaKjbUbC4ztu6YDRBv7Bmh19OCohnKDBu0GvYpGJpLBdMYQQDXkM7gE6Bu2p3zhUVjMiptF04m_Ya-k2vex26wMUxGHqbD2Rxq2s4xp65fVqrlpMu8LPaUCTSCmf71JKAaTkZN5G2u7hMMoQVvIUHRN6Umdm6905VXdqLNpLpT6n4_YAlzbPplTA9PBc1ecHOTiZYMHh4uEz9NwNfk_d5hsZHn6rDdjnV6lMAolgf2-rEfXrRopIeQ0_zRj_lHYo8IzFlBXsekllfi2wkA-r9EZyqoQsipSqgo6GQVcfSUsnkOWpkoei2P4XY8yN9yOCm";
+const CODE = "CFxqhZlAbp1do8oK88tmQscCjyjQgBeJ8upB_rkbznbXfeQt2QsO43V3szzl-g1zKTsefnMF-NbIllcWORg93G-maAPHoTjG7U6MoId6dnLQxERm4DEo9plfvuDHx_4e6_-1xqVFgKTow_QO0P-FT4FvdxrLXhDQPjdpg3UQbsv-kewL5itO32p_turynzz2Hywy_mtYfbX8j9IO5PNwIsFshy1zWOHUPFoRYbpvzYGmwlBy1iYYHoFipBbCb91tGkEwoLt3gci-WuQR0P-RF4R7yOWFchf9QE_YrKXTcG0vTDlX0WPQT6i2GjuiGpeTVGjbZqyuIM06BY2sDYjGkpuvE00EAXgJSCBdqyhAgK7C-C7lqidD7l3bgQ6YyRyMiUhSh9_DrWtLWBpDziVRUYOVwmiRHFd4Jm";
 // =======================================
 
 async function getToken() {
