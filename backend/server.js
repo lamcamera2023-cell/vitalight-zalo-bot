@@ -42,7 +42,7 @@ Quy tắc:
 
 /* ================= QUẢN LÝ TOKEN ================= */
 
-// Đọc refresh token: ưu tiên file, nếu chưa có thì lấy từ biến môi trường
+// Đọc refresh token: ưu tiên file (Volume), nếu chưa có thì lấy từ biến môi trường
 function getRefreshToken() {
   try {
     if (fs.existsSync(TOKEN_FILE)) {
@@ -117,21 +117,25 @@ app.get("/webhook/zalo", (req, res) => {
   return res.status(200).send("Webhook OK");
 });
 
-app.post("/webhook/zalo", async (req, res) => {
+// Trả 200 NGAY để Zalo không bị timeout, rồi mới xử lý phía sau
+app.post("/webhook/zalo", (req, res) => {
+  res.sendStatus(200);
+  handleMessage(req.body);
+});
+
+async function handleMessage(data) {
   try {
     console.log("====== WEBHOOK RECEIVED ======");
-    console.log(JSON.stringify(req.body, null, 2));
+    console.log(JSON.stringify(data, null, 2));
 
-    const data = req.body;
-
-    // Chỉ xử lý tin nhắn văn bản từ NGƯỜI DÙNG, bỏ qua tin do OA gửi
+    // Chỉ xử lý tin văn bản từ NGƯỜI DÙNG
     if (data.event_name !== "user_send_text") {
       console.log("Bỏ qua sự kiện:", data.event_name);
-      return res.sendStatus(200);
+      return;
     }
 
     if (!data.sender || !data.message || !data.message.text) {
-      return res.sendStatus(200);
+      return;
     }
 
     const userId = data.sender.id;
@@ -169,14 +173,12 @@ app.post("/webhook/zalo", async (req, res) => {
     );
 
     console.log("ZALO SEND:", JSON.stringify(zaloResponse.data));
-    return res.sendStatus(200);
   } catch (error) {
     console.error("WEBHOOK ERROR FULL:");
     console.error(JSON.stringify(error.response?.data, null, 2));
     console.error(error.message);
-    return res.sendStatus(200);
   }
-});
+}
 
 app.get("/health", (req, res) => {
   res.status(200).json({ status: "ok", service: "VITALIGHT CAMERA BOT" });
