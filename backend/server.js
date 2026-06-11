@@ -20,15 +20,34 @@ const ZALO_APP_ID = process.env.ZALO_APP_ID;
 const ZALO_APP_SECRET = process.env.ZALO_APP_SECRET;
 const TOKEN_FILE = "/data/tokens.json";
 
-const SYSTEM_PROMPT = `
+// Link CSV của Google Sheet
+const SHEET_CSV_URL =
+  "https://docs.google.com/spreadsheets/d/1MRdaubDM8sKgCcfmpUC4ElM1T1FoaUNR9SK8ZjvrH8w/edit?usp=sharing";
+
+// Bộ nhớ tạm chứa nội dung Sheet
+let knowledgeBase = "";
+
+// Tải nội dung Google Sheet về
+async function loadKnowledgeBase() {
+  try {
+    const res = await axios.get(SHEET_CSV_URL, { timeout: 10000 });
+    knowledgeBase = res.data;
+    console.log("Đã tải dữ liệu từ Google Sheet, độ dài:", knowledgeBase.length);
+  } catch (e) {
+    console.error("Lỗi tải Google Sheet:", e.message);
+  }
+}
+
+// Tải lúc khởi động và làm mới mỗi 5 phút
+loadKnowledgeBase();
+setInterval(loadKnowledgeBase, 5 * 60 * 1000);
+
+function buildSystemPrompt() {
+  return `
 Bạn là trợ lý AI của VITALIGHT CAMERA.
 
 Thông tin doanh nghiệp:
-- Chuyên camera IMOU
-- Chuyên camera DAHUA
-- Chuyên camera EZVIZ
-- Chuyên camera TAPO
-
+- Chuyên camera IMOU, DAHUA, EZVIZ, TAPO
 Hotline: 0937254555
 Website: https://vitalight.vn
 
@@ -37,29 +56,18 @@ Quy tắc trả lời:
 - Xưng "em" hoặc "shop", gọi khách là "anh/chị".
 - Trả lời ngắn gọn, thân thiện, nhiệt tình.
 - Nếu khách hỏi giá: tư vấn anh/chị liên hệ hotline 0937254555.
-- Nếu không biết hoặc vấn đề phức tạp: đề nghị anh/chị liên hệ hotline để được nhân viên hỗ trợ.
+- Nếu không biết hoặc vấn đề phức tạp: đề nghị anh/chị liên hệ hotline.
+- Khi khách đang hỏi về sản phẩm hay tính năng hoặc lỗi nào đó hãy bám sát theo đúng mẫu sản phẩm đó bằng việc ghi nhớ câu hỏi trước đó
 
-Mẫu trả lời tham khảo:
-- Khách hỏi "Lắp đặt có tốn phí không?" → "Dạ shop hỗ trợ hướng dẫn anh/chị tự lắp đặt được ạ. Các bước rất đơn giản, shop sẽ hướng dẫn chi tiết ạ!"
+DỮ LIỆU CÂU HỎI - TRẢ LỜI (tham khảo bảng dưới để trả lời khách):
+Bảng dưới ở định dạng CSV, mỗi dòng là một tình huống. Hãy tìm dòng phù hợp nhất với câu hỏi của khách và trả lời theo nội dung + gửi link video nếu có. Nếu khách chưa nói rõ dùng camera hãng nào, hãy hỏi lại trước khi gửi link.
 
-HƯỚNG DẪN GỬI VIDEO:
-Khi khách hỏi về CÀI ĐẶT, LẮP ĐẶT, SỬ DỤNG, hoặc gặp LỖI camera, hãy xác định khách đang dùng hãng nào rồi gửi link video hướng dẫn tương ứng:
-
-- Camera IMOU → https://www.youtube.com/watch?v=gOLER-uYXGQ&list=PL1JwLNg_8lSFkt7PH3xFnlnhcch5ejRLs
-- Camera EZVIZ → https://www.youtube.com/watch?v=oFv_UpamSzg&list=PL1JwLNg_8lSHrYzqR9CrA-73xLH6DrOs6
-- Camera DAHUA → https://www.youtube.com/watch?v=jTg5tTtUQg8&list=PL1JwLNg_8lSG-yRl6gcph6kI4PnXBVXrl
-- Camera TAPO → https://www.youtube.com/watch?v=1sjMO2BFpOk&list=PL1JwLNg_8lSHq_eZ1TnJsCfh0PsS3D3gY
-
-Lưu ý khi gửi video:
-- Nếu khách CHƯA nói rõ dùng hãng nào, hãy hỏi lại "Anh/chị đang dùng camera hãng nào ạ?" trước khi gửi link.
-- Gửi kèm lời dẫn thân thiện, ví dụ: "Dạ anh/chị tham khảo video hướng dẫn của shop ở đây nhé ạ: [link]"
-- Mỗi link là playlist gồm nhiều video, anh/chị tìm đúng vấn đề cần xem trong đó.
-- Nếu xem video vẫn chưa khắc phục được, đề nghị anh/chị gọi hotline 0937254555.
+${knowledgeBase}
 `;
+}
 
-/* ================= QUẢN LÝ TOKEN ================= */
+/* ================= QUẢN LÝ TOKEN ZALO ================= */
 
-// Đọc refresh token: ưu tiên file (Volume), nếu chưa có thì lấy từ biến môi trường
 function getRefreshToken() {
   try {
     if (fs.existsSync(TOKEN_FILE)) {
@@ -72,7 +80,6 @@ function getRefreshToken() {
   return process.env.ZALO_OA_REFRESH_TOKEN;
 }
 
-// Lưu token mới vào file
 function saveTokens(accessToken, refreshToken) {
   try {
     fs.writeFileSync(
@@ -89,10 +96,8 @@ function saveTokens(accessToken, refreshToken) {
   }
 }
 
-// Làm mới access token bằng refresh token
 async function refreshAccessToken() {
   const refreshToken = getRefreshToken();
-
   const params = new URLSearchParams();
   params.append("refresh_token", refreshToken);
   params.append("app_id", ZALO_APP_ID);
@@ -118,7 +123,6 @@ async function refreshAccessToken() {
     );
   }
 
-  // Lưu lại refresh token MỚI (cái cũ đã bị huỷ)
   saveTokens(newAccessToken, newRefreshToken);
   return newAccessToken;
 }
@@ -134,7 +138,6 @@ app.get("/webhook/zalo", (req, res) => {
   return res.status(200).send("Webhook OK");
 });
 
-// Trả 200 NGAY để Zalo không bị timeout, rồi mới xử lý phía sau
 app.post("/webhook/zalo", (req, res) => {
   res.sendStatus(200);
   handleMessage(req.body);
@@ -145,7 +148,6 @@ async function handleMessage(data) {
     console.log("====== WEBHOOK RECEIVED ======");
     console.log(JSON.stringify(data, null, 2));
 
-    // Chỉ xử lý tin văn bản từ NGƯỜI DÙNG
     if (data.event_name !== "user_send_text") {
       console.log("Bỏ qua sự kiện:", data.event_name);
       return;
@@ -159,22 +161,19 @@ async function handleMessage(data) {
     const userMessage = data.message.text;
     console.log("USER:", userMessage);
 
-    // Gọi Claude
     const claudeResponse = await anthropic.messages.create({
       model: "claude-sonnet-4-5",
       max_tokens: 500,
       temperature: 0.4,
-      system: SYSTEM_PROMPT,
+      system: buildSystemPrompt(),
       messages: [{ role: "user", content: userMessage }],
     });
 
     const aiReply = claudeResponse.content[0].text;
     console.log("AI:", aiReply);
 
-    // Lấy access token mới trước khi gửi
     const accessToken = await refreshAccessToken();
 
-    // Gửi tin về Zalo
     const zaloResponse = await axios.post(
       "https://openapi.zalo.me/v3.0/oa/message/cs",
       {
