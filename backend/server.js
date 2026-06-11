@@ -20,29 +20,99 @@ const ZALO_APP_ID = process.env.ZALO_APP_ID;
 const ZALO_APP_SECRET = process.env.ZALO_APP_SECRET;
 const TOKEN_FILE = "/data/tokens.json";
 
-// Link CSV của Google Sheet
 const SHEET_CSV_URL =
-  "https://docs.google.com/spreadsheets/d/1MRdaubDM8sKgCcfmpUC4ElM1T1FoaUNR9SK8ZjvrH8w/edit?usp=sharing";
+  "https://docs.google.com/spreadsheets/d/1MRdaubDM8sKgCcfmpUC4ElM1T1FoaUNR9SK8ZjvrH8w/export?format=csv";
 
-// Bộ nhớ tạm chứa nội dung Sheet
-let knowledgeBase = "";
+// Lưu dữ liệu Sheet dưới dạng từng dòng
+let knowledgeRows = [];
 
-// Tải nội dung Google Sheet về
+// Tách CSV thành các dòng (xử lý cơ bản dấu phẩy trong ngoặc kép)
+function parseCSV(text) {
+  const lines = text.split("\n").filter((l) => l.trim() !== "");
+  return lines.map((line) => {
+    const cells = [];
+    let cur = "";
+    let inQuote = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === '"') {
+        inQuote = !inQuote;
+      } else if (ch === "," && !inQuote) {
+        cells.push(cur);
+        cur = "";
+      } else {
+        cur += ch;
+      }
+    }
+    cells.push(cur);
+    return cells;
+  });
+}
+
 async function loadKnowledgeBase() {
   try {
     const res = await axios.get(SHEET_CSV_URL, { timeout: 10000 });
-    knowledgeBase = res.data;
-    console.log("Đã tải dữ liệu từ Google Sheet, độ dài:", knowledgeBase.length);
+    knowledgeRows = parseCSV(res.data);
+    console.log("Đã tải Google Sheet, số dòng:", knowledgeRows.length);
   } catch (e) {
     console.error("Lỗi tải Google Sheet:", e.message);
   }
 }
 
-// Tải lúc khởi động và làm mới mỗi 5 phút
 loadKnowledgeBase();
 setInterval(loadKnowledgeBase, 5 * 60 * 1000);
 
-function buildSystemPrompt() {
+// Bỏ dấu tiếng Việt + viết thường để so khớp dễ hơn
+function normalize(str) {
+  return (str || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d");
+}
+
+// Tìm các dòng liên quan nhất tới câu hỏi của khách
+function findRelevantRows(question, maxRows = 8) {
+  if (knowledgeRows.length === 0) return [];
+
+  const qWords = normalize(question)
+    .split(/\s+/)
+    .filter((w) => w.length >= 2);
+
+  const header = knowledgeRows[0];
+  const dataRows = knowledgeRows.slice(1);
+
+  // Tính điểm cho mỗi dòng theo số từ khóa khớp
+  const scored = dataRows.map((row) => {
+    const rowText = normalize(row.join(" "));
+    let score = 0;
+    for (const w of qWords) {
+      if (rowText.includes(w)) score++;
+    }
+    return { row, score };
+  });
+
+  const matched = scored
+    .filter((s) => s.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, maxRows)
+    .map((s) => s.row);
+
+  if (matched.length === 0) return [];
+
+  // Trả về kèm dòng tiêu đề để Claude hiểu cấu trúc
+  return [header, ...matched];
+}
+
+function buildSystemPrompt(question) {
+  const relevant = findRelevantRows(question);
+  let dataText = "";
+  if (relevant.length > 0) {
+    dataText = relevant.map((r) => r.join(" | ")).join("\n");
+  } else {
+    dataText = "(Không tìm thấy dòng phù hợp trong dữ liệu.)";
+  }
+
   return `
 Bạn là trợ lý AI của VITALIGHT CAMERA.
 
@@ -55,14 +125,14 @@ Quy tắc trả lời:
 - Luôn trả lời tiếng Việt.
 - Xưng "em" hoặc "shop", gọi khách là "anh/chị".
 - Trả lời ngắn gọn, thân thiện, nhiệt tình.
-- Nếu khách hỏi giá: tư vấn anh/chị liên hệ hotline 0937254555.
-- Nếu không biết hoặc vấn đề phức tạp: đề nghị anh/chị liên hệ hotline.
+- Nếu khách hỏi giá: tư vấn liên hệ hotline 0937254555.
+- Nếu không có thông tin phù hợp: đề nghị anh/chị liên hệ hotline.
+- Nếu khách chưa nói rõ dùng camera hãng nào mà cần gửi video, hãy hỏi lại hãng trước.
 - Khi khách đang hỏi về sản phẩm hay tính năng hoặc lỗi nào đó hãy bám sát theo đúng mẫu sản phẩm đó bằng việc ghi nhớ câu hỏi trước đó
+DỮ LIỆU THAM KHẢO (các dòng liên quan tới câu hỏi, định dạng: các cột cách nhau bằng dấu |):
+${dataText}
 
-DỮ LIỆU CÂU HỎI - TRẢ LỜI (tham khảo bảng dưới để trả lời khách):
-Bảng dưới ở định dạng CSV, mỗi dòng là một tình huống. Hãy tìm dòng phù hợp nhất với câu hỏi của khách và trả lời theo nội dung + gửi link video nếu có. Nếu khách chưa nói rõ dùng camera hãng nào, hãy hỏi lại trước khi gửi link.
-
-${knowledgeBase}
+Hãy dựa vào dữ liệu trên để trả lời. Nếu có link video phù hợp thì gửi cho khách.
 `;
 }
 
@@ -162,10 +232,10 @@ async function handleMessage(data) {
     console.log("USER:", userMessage);
 
     const claudeResponse = await anthropic.messages.create({
-      model: "claude-sonnet-4-5",
+      model: "claude-haiku-4-5",
       max_tokens: 500,
       temperature: 0.4,
-      system: buildSystemPrompt(),
+      system: buildSystemPrompt(userMessage),
       messages: [{ role: "user", content: userMessage }],
     });
 
