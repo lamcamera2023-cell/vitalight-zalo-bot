@@ -23,10 +23,15 @@ const TOKEN_FILE = "/data/tokens.json";
 const SHEET_CSV_URL =
   "https://docs.google.com/spreadsheets/d/1MRdaubDM8sKgCcfmpUC4ElM1T1FoaUNR9SK8ZjvrH8w/export?format=csv";
 
-// Lưu dữ liệu Sheet dưới dạng từng dòng
+// Dữ liệu Google Sheet (từng dòng)
 let knowledgeRows = [];
 
-// Tách CSV thành các dòng (xử lý cơ bản dấu phẩy trong ngoặc kép)
+// Lịch sử hội thoại theo từng người dùng (lưu trong bộ nhớ)
+const conversationHistory = {};
+const MAX_HISTORY = 6; // nhớ 6 tin gần nhất (3 lượt qua lại)
+
+/* ================= ĐỌC GOOGLE SHEET ================= */
+
 function parseCSV(text) {
   const lines = text.split("\n").filter((l) => l.trim() !== "");
   return lines.map((line) => {
@@ -62,7 +67,7 @@ async function loadKnowledgeBase() {
 loadKnowledgeBase();
 setInterval(loadKnowledgeBase, 5 * 60 * 1000);
 
-// Bỏ dấu tiếng Việt + viết thường để so khớp dễ hơn
+// Bỏ dấu tiếng Việt + viết thường để so khớp
 function normalize(str) {
   return (str || "")
     .toLowerCase()
@@ -71,7 +76,7 @@ function normalize(str) {
     .replace(/đ/g, "d");
 }
 
-// Tìm các dòng liên quan nhất tới câu hỏi của khách
+// Tìm các dòng liên quan nhất tới câu hỏi
 function findRelevantRows(question, maxRows = 8) {
   if (knowledgeRows.length === 0) return [];
 
@@ -82,7 +87,6 @@ function findRelevantRows(question, maxRows = 8) {
   const header = knowledgeRows[0];
   const dataRows = knowledgeRows.slice(1);
 
-  // Tính điểm cho mỗi dòng theo số từ khóa khớp
   const scored = dataRows.map((row) => {
     const rowText = normalize(row.join(" "));
     let score = 0;
@@ -99,8 +103,6 @@ function findRelevantRows(question, maxRows = 8) {
     .map((s) => s.row);
 
   if (matched.length === 0) return [];
-
-  // Trả về kèm dòng tiêu đề để Claude hiểu cấu trúc
   return [header, ...matched];
 }
 
@@ -127,8 +129,10 @@ Quy tắc trả lời:
 - Trả lời ngắn gọn, thân thiện, nhiệt tình.
 - Nếu khách hỏi giá: tư vấn liên hệ hotline 0937254555.
 - Nếu không có thông tin phù hợp: đề nghị anh/chị liên hệ hotline.
-- Nếu khách chưa nói rõ dùng camera hãng nào mà cần gửi video, hãy hỏi lại hãng trước.
-- Khi khách đang hỏi về sản phẩm hay tính năng hoặc lỗi nào đó hãy bám sát theo đúng mẫu sản phẩm đó bằng việc ghi nhớ câu hỏi trước đó
+- Khi khách đang hỏi về sản phẩm, tính năng hoặc lỗi của một hãng, hãy NHỚ hãng đó từ các tin nhắn trước và bám sát, KHÔNG hỏi lại khách dùng camera hãng nào.
+- Ví dụ: khi khách đã hỏi về camera IMOU, hãy tư vấn mọi thứ về IMOU (cài đặt, tính năng, lỗi thường gặp) và KHÔNG chuyển sang hãng khác cho tới khi khách chủ động hỏi về hãng khác.
+- Chỉ hỏi lại hãng khi khách hỏi vấn đề chung mà chưa từng nhắc tới hãng nào trong cả cuộc trò chuyện.
+
 DỮ LIỆU THAM KHẢO (các dòng liên quan tới câu hỏi, định dạng: các cột cách nhau bằng dấu |):
 ${dataText}
 
@@ -231,17 +235,36 @@ async function handleMessage(data) {
     const userMessage = data.message.text;
     console.log("USER:", userMessage);
 
+    // Lấy lịch sử hội thoại của khách này
+    if (!conversationHistory[userId]) {
+      conversationHistory[userId] = [];
+    }
+    const history = conversationHistory[userId];
+
+    // Thêm tin nhắn mới của khách
+    history.push({ role: "user", content: userMessage });
+
+    // Gọi Claude kèm lịch sử để bot nhớ ngữ cảnh
     const claudeResponse = await anthropic.messages.create({
       model: "claude-haiku-4-5",
       max_tokens: 500,
       temperature: 0.4,
       system: buildSystemPrompt(userMessage),
-      messages: [{ role: "user", content: userMessage }],
+      messages: history,
     });
 
     const aiReply = claudeResponse.content[0].text;
     console.log("AI:", aiReply);
 
+    // Lưu câu trả lời của bot vào lịch sử
+    history.push({ role: "assistant", content: aiReply });
+
+    // Chỉ giữ MAX_HISTORY tin gần nhất để tiết kiệm token
+    if (history.length > MAX_HISTORY) {
+      conversationHistory[userId] = history.slice(-MAX_HISTORY);
+    }
+
+    // Lấy access token mới và gửi tin về Zalo
     const accessToken = await refreshAccessToken();
 
     const zaloResponse = await axios.post(
