@@ -12,7 +12,7 @@ app.use(express.urlencoded({ extended: true }));
 
 const anthropic = new Anthropic({
   apiKey: process.env.CLAUDE_API_KEY,
-  maxRetries: 5, // Tự động thử lại khi bị rate limit (lỗi 429)
+  maxRetries: 5, // Tu dong thu lai khi bi rate limit (loi 429)
 });
 
 const PORT = process.env.PORT || 8080;
@@ -24,27 +24,31 @@ const TOKEN_FILE = "/data/tokens.json";
 const SHEET_CSV_URL =
   "https://docs.google.com/spreadsheets/d/1MRdaubDM8sKgCcfmpUC4ElM1T1FoaUNR9SK8ZjvrH8w/export?format=csv";
 
-/* ===== CẤU HÌNH LƯU DỮ LIỆU HỌC ĐƯỢC VÀO GOOGLE SHEET ===== */
-// Dán link Web app (Apps Script) bạn lấy ở bước Deploy vào đây:
+/* ============================================================
+   >>> DANH SACH USER_ID CUA ADMIN <<<
+   Day la (cac) tai khoan Zalo duoc quyen "day" bot.
+   Khi tai khoan nay nhan tin cho OA, bot se coi do la kien thuc
+   va luu vao Google Sheet, thay vi tu van nhu khach.
+   Nhieu admin thi them dong, cach nhau bang dau phay.
+   ============================================================ */
+const ADMIN_IDS = [
+  "6800186335928158597",
+];
+
+/* ===== CAU HINH LUU DU LIEU HOC DUOC VAO GOOGLE SHEET ===== */
 const LEARN_WEBAPP_URL =
   process.env.LEARN_WEBAPP_URL ||
   "https://script.google.com/macros/s/AKfycbzESvIPLe8I-UJXYKx09JD-RuNj-QidR4c50WyvKi0P4TbAriWsQibIrCz8vP0ytBglwg/exec";
-// Mật khẩu phải GIỐNG với chuỗi "secret" trong Apps Script:
 const LEARN_SECRET = process.env.LEARN_SECRET || "vitalight_secret_2025";
-// Ký hiệu admin gõ ở đầu câu để bot lưu lại:
-const SAVE_TRIGGER = "#luu";
 
-// Dữ liệu Google Sheet (từng dòng)
+// Du lieu Google Sheet (tung dong)
 let knowledgeRows = [];
 
-// Lịch sử hội thoại theo từng người dùng (lưu trong bộ nhớ)
+// Lich su hoi thoai theo tung nguoi dung (luu trong bo nho)
 const conversationHistory = {};
-const MAX_HISTORY = 6; // nhớ 6 tin gần nhất (3 lượt qua lại)
+const MAX_HISTORY = 6; // nho 6 tin gan nhat (3 luot qua lai)
 
-// Nhớ câu hỏi gần nhất của từng khách, để khi admin lưu thì gắn kèm ngữ cảnh
-const lastUserQuestion = {};
-
-/* ================= ĐỌC GOOGLE SHEET ================= */
+/* ================= DOC GOOGLE SHEET ================= */
 
 function parseCSV(text) {
   const lines = text.split("\n").filter((l) => l.trim() !== "");
@@ -72,16 +76,16 @@ async function loadKnowledgeBase() {
   try {
     const res = await axios.get(SHEET_CSV_URL, { timeout: 10000 });
     knowledgeRows = parseCSV(res.data);
-    console.log("Đã tải Google Sheet, số dòng:", knowledgeRows.length);
+    console.log("Da tai Google Sheet, so dong:", knowledgeRows.length);
   } catch (e) {
-    console.error("Lỗi tải Google Sheet:", e.message);
+    console.error("Loi tai Google Sheet:", e.message);
   }
 }
 
 loadKnowledgeBase();
 setInterval(loadKnowledgeBase, 5 * 60 * 1000);
 
-// Bỏ dấu tiếng Việt + viết thường để so khớp
+// Bo dau tieng Viet + viet thuong de so khop
 function normalize(str) {
   return (str || "")
     .toLowerCase()
@@ -90,7 +94,7 @@ function normalize(str) {
     .replace(/đ/g, "d");
 }
 
-// Tìm các dòng liên quan nhất tới câu hỏi
+// Tim cac dong lien quan nhat toi cau hoi
 function findRelevantRows(question, maxRows = 8) {
   if (knowledgeRows.length === 0) return [];
 
@@ -126,55 +130,55 @@ function buildSystemPrompt(question) {
   if (relevant.length > 0) {
     dataText = relevant.map((r) => r.join(" | ")).join("\n");
   } else {
-    dataText = "(Không tìm thấy dòng phù hợp trong dữ liệu.)";
+    dataText = "(Khong tim thay dong phu hop trong du lieu.)";
   }
 
   return `
-Bạn là trợ lý AI của VITALIGHT CAMERA.
+Ban la tro ly AI cua VITALIGHT CAMERA.
 
-Thông tin doanh nghiệp:
-- Chuyên camera IMOU, DAHUA, EZVIZ, TAPO
+Thong tin doanh nghiep:
+- Chuyen camera IMOU, DAHUA, EZVIZ, TAPO
 Hotline: 0937254555
 Website: https://vitalight.vn
 
-Quy tắc trả lời:
-- Luôn trả lời tiếng Việt.
-- Xưng "em" hoặc "shop", gọi khách là "anh/chị".
-- Trả lời ngắn gọn, thân thiện, nhiệt tình.
-- Nếu khách hỏi giá: tư vấn liên hệ hotline 0937254555.
-- Nếu không có thông tin phù hợp: đề nghị anh/chị liên hệ hotline.
-- Khi khách đang hỏi về sản phẩm, tính năng hoặc lỗi của một hãng, hãy NHỚ hãng đó từ các tin nhắn trước và bám sát, KHÔNG hỏi lại khách dùng camera hãng nào.
-- Ví dụ: khi khách đã hỏi về camera IMOU, hãy tư vấn mọi thứ về IMOU (cài đặt, tính năng, lỗi thường gặp) và KHÔNG chuyển sang hãng khác cho tới khi khách chủ động hỏi về hãng khác.
-- Chỉ hỏi lại hãng khi khách hỏi vấn đề chung mà chưa từng nhắc tới hãng nào trong cả cuộc trò chuyện.
+Quy tac tra loi:
+- Luon tra loi tieng Viet.
+- Xung "em" hoac "shop", goi khach la "anh/chi".
+- Tra loi ngan gon, than thien, nhiet tinh.
+- Neu khach hoi gia: tu van lien he hotline 0937254555.
+- Neu khong co thong tin phu hop: de nghi anh/chi lien he hotline.
+- Khi khach dang hoi ve san pham, tinh nang hoac loi cua mot hang, hay NHO hang do tu cac tin nhan truoc va bam sat, KHONG hoi lai khach dung camera hang nao.
+- Vi du: khi khach da hoi ve camera IMOU, hay tu van moi thu ve IMOU (cai dat, tinh nang, loi thuong gap) va KHONG chuyen sang hang khac cho toi khi khach chu dong hoi ve hang khac.
+- Chi hoi lai hang khi khach hoi van de chung ma chua tung nhac toi hang nao trong ca cuoc tro chuyen.
 
-DỮ LIỆU THAM KHẢO (các dòng liên quan tới câu hỏi, định dạng: các cột cách nhau bằng dấu |):
+DU LIEU THAM KHAO (cac dong lien quan toi cau hoi, dinh dang: cac cot cach nhau bang dau |):
 ${dataText}
 
-Hãy dựa vào dữ liệu trên để trả lời. Nếu có link video phù hợp thì gửi cho khách.
+Hay dua vao du lieu tren de tra loi. Neu co link video phu hop thi gui cho khach.
 `;
 }
 
-/* ===== LƯU DỮ LIỆU HỌC ĐƯỢC VÀO GOOGLE SHEET ===== */
-async function saveToSheet(cauHoi, traLoi) {
+/* ===== LUU DU LIEU HOC DUOC VAO GOOGLE SHEET ===== */
+async function saveToSheet(noiDung) {
   try {
     const res = await axios.post(
       LEARN_WEBAPP_URL,
       {
         secret: LEARN_SECRET,
-        cau_hoi: cauHoi || "",
-        tra_loi: traLoi || "",
+        cau_hoi: "(admin day truc tiep)",
+        tra_loi: noiDung || "",
       },
       { timeout: 10000 }
     );
-    console.log("LƯU SHEET:", res.data);
+    console.log("LUU SHEET:", res.data);
     return true;
   } catch (e) {
-    console.error("Lỗi lưu vào Sheet:", e.message);
+    console.error("Loi luu vao Sheet:", e.message);
     return false;
   }
 }
 
-/* ================= QUẢN LÝ TOKEN ZALO ================= */
+/* ================= QUAN LY TOKEN ZALO ================= */
 
 function getRefreshToken() {
   try {
@@ -183,7 +187,7 @@ function getRefreshToken() {
       if (data.refresh_token) return data.refresh_token;
     }
   } catch (e) {
-    console.error("Lỗi đọc file token:", e.message);
+    console.error("Loi doc file token:", e.message);
   }
   return process.env.ZALO_OA_REFRESH_TOKEN;
 }
@@ -198,9 +202,9 @@ function saveTokens(accessToken, refreshToken) {
         2
       )
     );
-    console.log("Đã lưu token mới vào file.");
+    console.log("Da luu token moi vao file.");
   } catch (e) {
-    console.error("Lỗi lưu file token:", e.message);
+    console.error("Loi luu file token:", e.message);
   }
 }
 
@@ -227,7 +231,7 @@ async function refreshAccessToken() {
 
   if (!newAccessToken) {
     throw new Error(
-      "Không lấy được access token: " + JSON.stringify(response.data)
+      "Khong lay duoc access token: " + JSON.stringify(response.data)
     );
   }
 
@@ -235,7 +239,7 @@ async function refreshAccessToken() {
   return newAccessToken;
 }
 
-/* ===== GỬI TIN NHẮN VỀ ZALO ===== */
+/* ===== GUI TIN NHAN VE ZALO ===== */
 async function sendZaloMessage(userId, text) {
   const accessToken = await refreshAccessToken();
   const zaloResponse = await axios.post(
@@ -271,28 +275,32 @@ app.post("/webhook/zalo", (req, res) => {
   handleEvent(req.body);
 });
 
-/* ===== XỬ LÝ TẤT CẢ SỰ KIỆN TỪ ZALO ===== */
+/* ===== XU LY SU KIEN TU ZALO ===== */
 async function handleEvent(data) {
   try {
     console.log("====== WEBHOOK RECEIVED ======");
     console.log(JSON.stringify(data, null, 2));
 
-    const eventName = data.event_name;
-
-    // 1) KHÁCH gửi tin -> bot tư vấn
-    if (eventName === "user_send_text") {
-      await handleUserMessage(data);
+    if (data.event_name !== "user_send_text") {
+      console.log("Bo qua su kien:", data.event_name);
       return;
     }
 
-    // 2) ADMIN/OA gửi tin -> nếu có #luu thì lưu vào Sheet
-    // Tùy cấu hình, sự kiện admin gửi có thể là 'oa_send_text' hoặc 'anonymous_send_text'
-    if (eventName === "oa_send_text" || eventName === "anonymous_send_text") {
-      await handleAdminMessage(data);
+    if (!data.sender || !data.message || !data.message.text) {
       return;
     }
 
-    console.log("Bỏ qua sự kiện:", eventName);
+    const userId = data.sender.id;
+    const userMessage = data.message.text;
+
+    // PHAN BIET ADMIN VOI KHACH
+    if (ADMIN_IDS.includes(userId)) {
+      // Day la ADMIN -> coi la kien thuc day bot
+      await handleAdminTeaching(userId, userMessage);
+    } else {
+      // Day la KHACH -> tu van nhu binh thuong
+      await handleUserMessage(userId, userMessage);
+    }
   } catch (error) {
     console.error("WEBHOOK ERROR FULL:");
     console.error(JSON.stringify(error.response?.data, null, 2));
@@ -300,29 +308,44 @@ async function handleEvent(data) {
   }
 }
 
-/* ===== KHI KHÁCH NHẮN ===== */
-async function handleUserMessage(data) {
-  if (!data.sender || !data.message || !data.message.text) {
-    return;
-  }
+/* ===== KHI ADMIN DAY BOT ===== */
+async function handleAdminTeaching(adminId, message) {
+  console.log("ADMIN DAY:", message);
 
-  const userId = data.sender.id;
-  const userMessage = data.message.text;
+  const noiDung = (message || "").trim();
+  if (!noiDung) return;
+
+  const ok = await saveToSheet(noiDung);
+
+  if (ok) {
+    // Nap lai du lieu Sheet ngay de dung duoc lien
+    await loadKnowledgeBase();
+    await sendZaloMessage(
+      adminId,
+      "Da hoc xong noi dung nay va luu vao du lieu. Bot se dung de tu van cho khach."
+    );
+  } else {
+    await sendZaloMessage(
+      adminId,
+      "Luu du lieu that bai. Vui long kiem tra lai cau hinh Google Sheet (link Web app)."
+    );
+  }
+}
+
+/* ===== KHI KHACH NHAN ===== */
+async function handleUserMessage(userId, userMessage) {
   console.log("USER:", userMessage);
 
-  // Ghi nhớ câu hỏi gần nhất của khách (để admin lưu kèm ngữ cảnh)
-  lastUserQuestion[userId] = userMessage;
-
-  // Lấy lịch sử hội thoại của khách này
+  // Lay lich su hoi thoai cua khach nay
   if (!conversationHistory[userId]) {
     conversationHistory[userId] = [];
   }
   const history = conversationHistory[userId];
 
-  // Thêm tin nhắn mới của khách
+  // Them tin nhan moi cua khach
   history.push({ role: "user", content: userMessage });
 
-  // Gọi Claude kèm lịch sử để bot nhớ ngữ cảnh
+  // Goi Claude kem lich su de bot nho ngu canh
   let aiReply;
   try {
     const claudeResponse = await anthropic.messages.create({
@@ -334,65 +357,27 @@ async function handleUserMessage(data) {
     });
     aiReply = claudeResponse.content[0].text;
   } catch (err) {
-    // Sau khi SDK đã tự thử lại mà vẫn lỗi (vd quá tải)
     if (err.status === 429) {
-      console.error("Vẫn bị rate limit sau khi retry:", err.message);
+      console.error("Van bi rate limit sau khi retry:", err.message);
       aiReply =
-        "Dạ hệ thống đang hơi bận ạ, anh/chị vui lòng nhắn lại sau ít phút giúp em, hoặc gọi hotline 0937254555 để được hỗ trợ ngay nhé!";
+        "Da he thong dang hoi ban a, anh/chi vui long nhan lai sau it phut giup em, hoac goi hotline 0937254555 de duoc ho tro ngay nhe!";
       await sendZaloMessage(userId, aiReply);
-      return; // không lưu câu xin lỗi vào lịch sử
+      return;
     }
     throw err;
   }
   console.log("AI:", aiReply);
 
-  // Lưu câu trả lời của bot vào lịch sử
+  // Luu cau tra loi cua bot vao lich su
   history.push({ role: "assistant", content: aiReply });
 
-  // Chỉ giữ MAX_HISTORY tin gần nhất để tiết kiệm token
+  // Chi giu MAX_HISTORY tin gan nhat de tiet kiem token
   if (history.length > MAX_HISTORY) {
     conversationHistory[userId] = history.slice(-MAX_HISTORY);
   }
 
-  // Gửi tin về Zalo cho khách
+  // Gui tin ve Zalo cho khach
   await sendZaloMessage(userId, aiReply);
-}
-
-/* ===== KHI ADMIN NHẮN (học dữ liệu) ===== */
-async function handleAdminMessage(data) {
-  // Lấy nội dung admin gõ
-  const adminText =
-    (data.message && data.message.text) ? data.message.text.trim() : "";
-  if (!adminText) return;
-
-  // Người nhận (khách) - dùng để lấy câu hỏi gần nhất của họ
-  const recipientId =
-    (data.recipient && data.recipient.id) ? data.recipient.id : null;
-
-  console.log("ADMIN:", adminText);
-
-  // Chỉ lưu khi admin gõ #luu ở đầu câu
-  if (!normalize(adminText).startsWith(normalize(SAVE_TRIGGER))) {
-    console.log("Admin không gõ #luu -> bỏ qua, không lưu.");
-    return;
-  }
-
-  // Bỏ ký hiệu #luu ở đầu, lấy phần nội dung thật
-  const noiDung = adminText.slice(SAVE_TRIGGER.length).trim();
-  if (!noiDung) {
-    console.log("Sau #luu không có nội dung -> bỏ qua.");
-    return;
-  }
-
-  // Câu hỏi gần nhất của khách tương ứng (nếu có)
-  const cauHoi = recipientId ? lastUserQuestion[recipientId] || "" : "";
-
-  const ok = await saveToSheet(cauHoi, noiDung);
-
-  // Sau khi lưu xong, cập nhật lại dữ liệu Sheet ngay để dùng được luôn
-  if (ok) {
-    await loadKnowledgeBase();
-  }
 }
 
 app.get("/health", (req, res) => {
