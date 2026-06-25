@@ -46,7 +46,7 @@ let knowledgeRows = [];
 
 // Lich su hoi thoai theo tung nguoi dung (luu trong bo nho)
 const conversationHistory = {};
-const MAX_HISTORY = 6; // nho 6 tin gan nhat (3 luot qua lai)
+const MAX_HISTORY = 4; // nho 4 tin gan nhat (2 luot qua lai)
 
 /* ================= DOC GOOGLE SHEET ================= */
 
@@ -95,7 +95,7 @@ function normalize(str) {
 }
 
 // Tim cac dong lien quan nhat toi cau hoi
-function findRelevantRows(question, maxRows = 8) {
+function findRelevantRows(question, maxRows = 5) {
   if (knowledgeRows.length === 0) return [];
 
   const qWords = normalize(question)
@@ -133,32 +133,19 @@ function buildSystemPrompt(question) {
     dataText = "(Khong tim thay dong phu hop trong du lieu.)";
   }
 
-  return `
-Ban la tro ly AI cua VITALIGHT CAMERA.
+  return `Ban la tro ly AI cua VITALIGHT CAMERA (chuyen camera IMOU, DAHUA, EZVIZ, TAPO). Hotline: 0937254555. Website: https://vitalight.vn
 
-Thong tin doanh nghiep:
-- Chuyen camera IMOU, DAHUA, EZVIZ, TAPO
-Hotline: 0937254555
-Website: https://vitalight.vn
+Quy tac:
+- Tra loi tieng Viet, ngan gon, than thien. Xung "em/shop", goi khach "anh/chi".
+- Hoi gia: de nghi lien he hotline 0937254555.
+- Khong co thong tin phu hop: de nghi lien he hotline.
+- Nho hang khach dang hoi tu cac tin nhan truoc va bam sat hang do (cai dat, tinh nang, loi). KHONG hoi lai hang, KHONG chuyen sang hang khac cho toi khi khach chu dong hoi hang khac.
+- Chi hoi lai hang khi khach hoi van de chung ma chua nhac hang nao.
+- Co link video phu hop thi gui cho khach.
 
-Quy tac tra loi:
-- Luon tra loi tieng Viet.
-- Xung "em" hoac "shop", goi khach la "anh/chi".
-- Tra loi ngan gon, than thien, nhiet tinh.
-- Neu khach hoi gia: tu van lien he hotline 0937254555.
-- Neu khong co thong tin phu hop: de nghi anh/chi lien he hotline.
-- Khi khach dang hoi ve san pham, tinh nang hoac loi cua mot hang, hay NHO hang do tu cac tin nhan truoc va bam sat, KHONG hoi lai khach dung camera hang nao.
-- Vi du: khi khach da hoi ve camera IMOU, hay tu van moi thu ve IMOU (cai dat, tinh nang, loi thuong gap) va KHONG chuyen sang hang khac cho toi khi khach chu dong hoi ve hang khac.
-- Chi hoi lai hang khi khach hoi van de chung ma chua tung nhac toi hang nao trong ca cuoc tro chuyen.
-
-DU LIEU THAM KHAO (cac dong lien quan toi cau hoi, dinh dang: cac cot cach nhau bang dau |):
-${dataText}
-
-Hay dua vao du lieu tren de tra loi. Neu co link video phu hop thi gui cho khach.
-`;
+DU LIEU THAM KHAO (cac cot cach nhau bang dau |):
+${dataText}`;
 }
-
-/* ===== LUU DU LIEU HOC DUOC VAO GOOGLE SHEET ===== */
 async function saveToSheet(noiDung) {
   try {
     const res = await axios.post(
