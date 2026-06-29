@@ -370,7 +370,12 @@ async function handleUserMessage(userId, userMessage) {
 app.get("/health", (req, res) => {
   res.status(200).json({ status: "ok", service: "VITALIGHT CAMERA BOT" });
 });
-
+// Webhook xử lý khi user rút lại đồng ý / xóa dữ liệu (yêu cầu của Zalo Mini App)
+app.post("/zalo-userdata-webhook", (req, res) => {
+  console.log("ZALO USER DATA WEBHOOK:", JSON.stringify(req.body));
+  // Zalo chỉ cần phản hồi 200 để xác nhận đã nhận
+  res.status(200).json({ result: "received" });
+});
 app.listen(PORT, () => {
   console.log(`SERVER RUNNING ON PORT ${PORT}`);
 });
