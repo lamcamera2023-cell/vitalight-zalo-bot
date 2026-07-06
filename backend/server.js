@@ -3,13 +3,14 @@ import axios from "axios";
 import dotenv from "dotenv";
 import fs from "fs";
 import Anthropic from "@anthropic-ai/sdk";
+import crypto from "crypto";
 
 dotenv.config();
 
 const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-const crypto = require("crypto");
+
 
 const anthropic = new Anthropic({
   apiKey: process.env.CLAUDE_API_KEY,
