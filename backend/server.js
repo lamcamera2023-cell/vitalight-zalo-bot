@@ -394,25 +394,34 @@ app.post("/zalo-userdata-webhook", (req, res) => {
   // Zalo chỉ cần phản hồi 200 để xác nhận đã nhận
   res.status(200).json({ result: "received" });
 });
-// ===== ENDPOINT 1: Tao MAC cho Mini App =====
+// ===== ENDPOINT 1: Tao MAC cho don hang tren Mini App =====
+// Mini App gui len orderData -> server tra ve mac
 app.post("/create-mac", (req, res) => {
   try {
-    const { amount, description, extradata } = req.body;
+    const body = req.body;
 
-    if (!amount || !description) {
+    if (!body || Object.keys(body).length === 0) {
       return res.status(400).json({ error: "Thieu du lieu" });
     }
 
-    const dataToSign = {
-      appId: MINIAPP_APP_ID,
-      amount: amount,
-      description: description,
-      extradata: extradata || "",
-    };
+    // Sap xep key theo alphabet, JSON.stringify neu la object
+    const dataMac = Object.keys(body)
+      .sort()
+      .map((key) => {
+        const value = body[key];
+        const strVal =
+          typeof value === "object" ? JSON.stringify(value) : value;
+        return `${key}=${strVal}`;
+      })
+      .join("&");
 
-    const mac = createMac(dataToSign, MINIAPP_PRIVATE_KEY);
+    const mac = crypto
+      .createHmac("sha256", MINIAPP_PRIVATE_KEY)
+      .update(dataMac)
+      .digest("hex");
 
-    console.log("CREATE MAC:", { amount, description, mac });
+    console.log("CREATE MAC - dataMac:", dataMac);
+    console.log("CREATE MAC - mac:", mac);
 
     return res.json({ mac });
   } catch (err) {
@@ -424,7 +433,6 @@ app.post("/create-mac", (req, res) => {
 // ===== ENDPOINT 2: Nhan thong bao tu Zalo khi don hang duoc tao =====
 app.post("/zalo-checkout-notify", (req, res) => {
   try {
-    // Kiem tra IP goi den (chi cho phep IP cua Zalo)
     const clientIp = (
       req.headers["x-forwarded-for"] ||
       req.socket.remoteAddress ||
@@ -440,27 +448,59 @@ app.post("/zalo-checkout-notify", (req, res) => {
 
     if (!ZALO_ALLOWED_IPS.includes(clientIp)) {
       console.warn("NOTIFY REJECTED - IP khong hop le:", clientIp);
-      return res.status(403).json({ error: "IP not allowed" });
+      return res.status(403).json({
+        returnCode: 0,
+        returnMessage: "IP not allowed",
+      });
     }
 
-    // Xac thuc MAC
-    const { mac, ...dataToVerify } = req.body;
-    const expectedMac = createMac(dataToVerify, MINIAPP_PRIVATE_KEY);
+    const { data, mac } = req.body || {};
 
-    if (mac !== expectedMac) {
+    if (!data || !mac) {
+      return res.status(400).json({
+        returnCode: 0,
+        returnMessage: "Missing data or mac",
+      });
+    }
+
+    const { method, orderId, appId } = data || {};
+
+    if (!method || !orderId || !appId) {
+      return res.status(400).json({
+        returnCode: 0,
+        returnMessage: "Missing method or orderId or appId",
+      });
+    }
+
+    // Xac thuc MAC (theo dung chuan bai dev.to)
+    const str = `appId=${appId}&orderId=${orderId}&method=${method}`;
+    const expectedMac = crypto
+      .createHmac("sha256", MINIAPP_PRIVATE_KEY)
+      .update(str)
+      .digest("hex");
+
+    if (expectedMac !== mac) {
       console.warn("NOTIFY REJECTED - MAC khong khop");
-      return res.status(403).json({ error: "Invalid MAC" });
+      console.warn("Expected:", expectedMac);
+      console.warn("Got:     ", mac);
+      return res.status(200).json({
+        returnCode: 0,
+        returnMessage: "Fail",
+      });
     }
 
-    // TODO: cap nhat trang thai don hang vao Google Sheet (lam o phan sau)
-    console.log("ZALO NOTIFY OK - don hang hop le:", req.body);
+    console.log("ZALO NOTIFY OK - don hang hop le:", data);
+    // TODO: cap nhat trang thai don hang vao Google Sheet (lam sau)
 
-    return res.status(200).json({ returnCode: 1, returnMessage: "success" });
+    return res.status(200).json({
+      returnCode: 1,
+      returnMessage: "Success",
+    });
   } catch (err) {
     console.error("NOTIFY ERROR:", err.message);
-    return res.status(500).json({ returnCode: 0, returnMessage: err.message });
+    return res.status(500).json({
+      returnCode: 0,
+      returnMessage: err.message,
+    });
   }
-});
-app.listen(PORT, () => {
-  console.log(`SERVER RUNNING ON PORT ${PORT}`);
 });
