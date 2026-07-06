@@ -66,7 +66,7 @@ const ADMIN_IDS = [
 /* ===== CAU HINH LUU DU LIEU HOC DUOC VAO GOOGLE SHEET ===== */
 const LEARN_WEBAPP_URL =
   process.env.LEARN_WEBAPP_URL ||
-  "https://script.google.com/macros/s/AKfycbzESvIPLe8I-UJXYKx09JD-RuNj-QidR4c50WyvKi0P4TbAriWsQibIrCz8vP0ytBglwg/exec";
+  "https://script.google.com/macros/s/AKfycbwuxfWJQMaGgtRZmnR1HBuV8QnVozkcsnYbN_i3xmkyyy6V2FMlf_HVkv-v-M9TJo9Rrg/exec";
 const LEARN_SECRET = process.env.LEARN_SECRET || "vitalight_secret_2025";
 
 // Du lieu Google Sheet (tung dong)
@@ -512,6 +512,32 @@ app.post("/zalo-checkout-notify", (req, res) => {
       returnCode: 0,
       returnMessage: err.message,
     });
+  }
+});
+// ===== ENDPOINT 3: Ghi don hang vao Google Sheet (thay Mini App goi truc tiep) =====
+app.post("/save-order", async (req, res) => {
+  try {
+    const orderData = req.body;
+    
+    console.log("SAVE ORDER RECEIVED:", JSON.stringify(orderData));
+
+    if (!orderData || !orderData.name || !orderData.phone) {
+      return res.status(400).json({ error: "Thieu du lieu don hang" });
+    }
+
+    // URL Apps Script ghi don hang (thay bang URL cua ban)
+    const ORDER_SHEET_URL = process.env.ORDER_SHEET_URL || "https://script.google.com/macros/s/AKfycbwuxfWJQMaGgtRZmnR1HBuV8QnVozkcsnYbN_i3xmkyyy6V2FMlf_HVkv-v-M9TJo9Rrg/exec";
+
+    // Server goi Apps Script (khong bi whitelist chan nhu Mini App)
+    const response = await axios.post(ORDER_SHEET_URL, orderData, {
+      timeout: 15000,
+    });
+
+    console.log("SAVE ORDER OK:", response.data);
+    return res.json({ success: true });
+  } catch (err) {
+    console.error("SAVE ORDER ERROR:", err.message);
+    return res.status(500).json({ error: err.message });
   }
 });
 app.listen(PORT, () => {
