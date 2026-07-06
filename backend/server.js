@@ -9,6 +9,7 @@ dotenv.config();
 const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+const crypto = require("crypto");
 
 const anthropic = new Anthropic({
   apiKey: process.env.CLAUDE_API_KEY,
@@ -20,7 +21,23 @@ const PORT = process.env.PORT || 8080;
 const ZALO_APP_ID = process.env.ZALO_APP_ID;
 const ZALO_APP_SECRET = process.env.ZALO_APP_SECRET;
 const TOKEN_FILE = "/data/tokens.json";
+// ===== ZALO CHECKOUT SDK =====
+const MINIAPP_APP_ID = "1082547878176959903";
+const MINIAPP_PRIVATE_KEY = process.env.ZALO_MINIAPP_PRIVATE_KEY;
+const ZALO_ALLOWED_IPS = ["118.102.2.29", "49.213.78.2"];
 
+// Tạo chữ ký MAC theo chuẩn Zalo (HmacSHA256)
+function createMac(data, privateKey) {
+  // Sắp xếp key theo thứ tự alphabet, nối kiểu key=value&key=value...
+  const sortedKeys = Object.keys(data).sort();
+  const rawString = sortedKeys
+    .map((key) => `${key}=${data[key]}`)
+    .join("&");
+  return crypto
+    .createHmac("sha256", privateKey)
+    .update(rawString)
+    .digest("hex");
+}
 const SHEET_CSV_URL =
   "https://docs.google.com/spreadsheets/d/1MRdaubDM8sKgCcfmpUC4ElM1T1FoaUNR9SK8ZjvrH8w/export?format=csv";
 
@@ -375,6 +392,73 @@ app.post("/zalo-userdata-webhook", (req, res) => {
   console.log("ZALO USER DATA WEBHOOK:", JSON.stringify(req.body));
   // Zalo chỉ cần phản hồi 200 để xác nhận đã nhận
   res.status(200).json({ result: "received" });
+});
+// ===== ENDPOINT 1: Tao MAC cho Mini App =====
+app.post("/create-mac", (req, res) => {
+  try {
+    const { amount, description, extradata } = req.body;
+
+    if (!amount || !description) {
+      return res.status(400).json({ error: "Thieu du lieu" });
+    }
+
+    const dataToSign = {
+      appId: MINIAPP_APP_ID,
+      amount: amount,
+      description: description,
+      extradata: extradata || "",
+    };
+
+    const mac = createMac(dataToSign, MINIAPP_PRIVATE_KEY);
+
+    console.log("CREATE MAC:", { amount, description, mac });
+
+    return res.json({ mac });
+  } catch (err) {
+    console.error("CREATE MAC ERROR:", err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// ===== ENDPOINT 2: Nhan thong bao tu Zalo khi don hang duoc tao =====
+app.post("/zalo-checkout-notify", (req, res) => {
+  try {
+    // Kiem tra IP goi den (chi cho phep IP cua Zalo)
+    const clientIp = (
+      req.headers["x-forwarded-for"] ||
+      req.socket.remoteAddress ||
+      ""
+    )
+      .toString()
+      .split(",")[0]
+      .trim()
+      .replace("::ffff:", "");
+
+    console.log("ZALO NOTIFY IP:", clientIp);
+    console.log("ZALO NOTIFY BODY:", JSON.stringify(req.body));
+
+    if (!ZALO_ALLOWED_IPS.includes(clientIp)) {
+      console.warn("NOTIFY REJECTED - IP khong hop le:", clientIp);
+      return res.status(403).json({ error: "IP not allowed" });
+    }
+
+    // Xac thuc MAC
+    const { mac, ...dataToVerify } = req.body;
+    const expectedMac = createMac(dataToVerify, MINIAPP_PRIVATE_KEY);
+
+    if (mac !== expectedMac) {
+      console.warn("NOTIFY REJECTED - MAC khong khop");
+      return res.status(403).json({ error: "Invalid MAC" });
+    }
+
+    // TODO: cap nhat trang thai don hang vao Google Sheet (lam o phan sau)
+    console.log("ZALO NOTIFY OK - don hang hop le:", req.body);
+
+    return res.status(200).json({ returnCode: 1, returnMessage: "success" });
+  } catch (err) {
+    console.error("NOTIFY ERROR:", err.message);
+    return res.status(500).json({ returnCode: 0, returnMessage: err.message });
+  }
 });
 app.listen(PORT, () => {
   console.log(`SERVER RUNNING ON PORT ${PORT}`);
