@@ -514,3 +514,6 @@ app.post("/zalo-checkout-notify", (req, res) => {
     });
   }
 });
+app.listen(PORT, () => {
+  console.log(`SERVER RUNNING ON PORT ${PORT}`);
+});
